@@ -71,7 +71,6 @@ class ZoteroRepository(
                 try {
                     val itemData = gson.fromJson(localItem.jsonData, ItemData::class.java)
                     // We must fetch the latest version from server to resolve conflicts
-                    val serverItemResponse = apiService.getItemChildren(userId, localItem.key, apiKey) // Actually we need getItem, but we can just use a list query
                     val serverItemRes = apiService.getItems(userId, apiKey, itemKey = localItem.key)
                     if (serverItemRes.isSuccessful) {
                         val serverItems = serverItemRes.body()
@@ -119,9 +118,12 @@ class ZoteroRepository(
                 database.zoteroDao().insertCollections(entities)
             }
 
-            // 3. Fetch Items
-            val itemsResponse = apiService.getItems(userId, apiKey)
-            if (itemsResponse.isSuccessful) {
+            // 3. Fetch Items, paginated (the API caps each page at 100).
+            // Annotations are excluded here: the reader loads them per-document.
+            var start = 0
+            while (true) {
+                val itemsResponse = apiService.getItems(userId, apiKey, itemType = "-annotation", start = start)
+                if (!itemsResponse.isSuccessful) break
                 val items = itemsResponse.body() ?: emptyList()
                 val entities = items.map {
                     ZoteroItemEntity(
@@ -135,6 +137,8 @@ class ZoteroRepository(
                     )
                 }
                 database.zoteroDao().insertItems(entities)
+                if (items.size < 100 || start >= 10000) break
+                start += 100
             }
         } catch (e: Exception) {
             e.printStackTrace()

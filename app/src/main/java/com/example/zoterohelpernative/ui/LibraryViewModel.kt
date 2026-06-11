@@ -19,6 +19,13 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.automirrored.outlined.*
 import androidx.compose.material.icons.Icons
 
+enum class LibrarySortOption(val label: String) {
+    TITLE("Titolo"),
+    YEAR("Anno"),
+    AUTHOR("Autore"),
+    ITEM_TYPE("Tipo")
+}
+
 data class LibraryState(
     val items: List<ZoteroItem> = emptyList(),
     val collections: List<ZoteroCollection> = emptyList(),
@@ -26,7 +33,10 @@ data class LibraryState(
     val activeItem: ZoteroItem? = null,
     val isLoading: Boolean = false,
     val error: String? = null,
-    val searchQuery: String = ""
+    val searchQuery: String = "",
+    val sortOption: LibrarySortOption = LibrarySortOption.TITLE,
+    val sortAscending: Boolean = true,
+    val filterTag: String? = null
 )
 
 val LibraryState.allTags: List<String>
@@ -34,16 +44,48 @@ val LibraryState.allTags: List<String>
         return items.flatMap { it.data.tags?.map { t -> t.tag } ?: emptyList() }.distinct().sorted()
     }
 
+private val yearRegex = Regex("""\d{4}""")
+
+val ItemData.year: Int?
+    get() = date?.let { yearRegex.find(it)?.value?.toIntOrNull() }
+
+val ItemData.authorSummary: String?
+    get() = creators?.firstOrNull { it.lastName != null || it.name != null }
+        ?.let { it.lastName ?: it.name }
+
 val LibraryState.filteredItems: List<ZoteroItem>
     get() {
-        var list = items.filter { it.data.itemType != "attachment" && it.data.itemType != "annotation" }
+        var list = items.filter {
+            it.data.itemType != "attachment" &&
+            it.data.itemType != "annotation" &&
+            it.data.parentItem == null
+        }
         if (activeCollectionId != null) {
             list = list.filter { it.data.collections?.contains(activeCollectionId) == true }
         }
-        if (searchQuery.isNotBlank()) {
-            list = list.filter { it.data.title?.contains(searchQuery, ignoreCase = true) == true }
+        if (filterTag != null) {
+            list = list.filter { item -> item.data.tags?.any { it.tag == filterTag } == true }
         }
-        return list
+        if (searchQuery.isNotBlank()) {
+            val q = searchQuery.trim()
+            list = list.filter { item ->
+                item.data.title?.contains(q, ignoreCase = true) == true ||
+                item.data.date?.contains(q, ignoreCase = true) == true ||
+                item.data.creators?.any {
+                    it.lastName?.contains(q, ignoreCase = true) == true ||
+                    it.firstName?.contains(q, ignoreCase = true) == true ||
+                    it.name?.contains(q, ignoreCase = true) == true
+                } == true
+            }
+        }
+        val comparator: Comparator<ZoteroItem> = when (sortOption) {
+            LibrarySortOption.TITLE -> compareBy { it.data.title?.lowercase() ?: "\uFFFF" }
+            LibrarySortOption.YEAR -> compareBy { it.data.year ?: Int.MAX_VALUE }
+            LibrarySortOption.AUTHOR -> compareBy { it.data.authorSummary?.lowercase() ?: "\uFFFF" }
+            LibrarySortOption.ITEM_TYPE -> compareBy { it.data.itemType }
+        }
+        val sorted = list.sortedWith(comparator)
+        return if (sortAscending) sorted else sorted.reversed()
     }
 
 fun LibraryState.getChildrenForItem(parentKey: String): List<ZoteroItem> {
@@ -112,6 +154,21 @@ class LibraryViewModel(
 
     fun setSearchQuery(query: String) {
         _state.update { it.copy(searchQuery = query) }
+    }
+
+    fun setSortOption(option: LibrarySortOption) {
+        _state.update {
+            if (it.sortOption == option) {
+                // Selecting the active criterion again flips the direction
+                it.copy(sortAscending = !it.sortAscending)
+            } else {
+                it.copy(sortOption = option, sortAscending = true)
+            }
+        }
+    }
+
+    fun setFilterTag(tag: String?) {
+        _state.update { it.copy(filterTag = tag) }
     }
 
     fun setActiveCollection(collectionId: String?) {

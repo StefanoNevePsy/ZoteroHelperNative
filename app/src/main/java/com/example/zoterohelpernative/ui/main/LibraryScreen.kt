@@ -25,6 +25,8 @@ import com.example.zoterohelpernative.ui.LibraryViewModel
 import com.example.zoterohelpernative.ui.filteredItems
 import com.example.zoterohelpernative.ui.allTags
 import com.example.zoterohelpernative.ui.getChildrenForItem
+import com.example.zoterohelpernative.ui.year
+import com.example.zoterohelpernative.ui.authorSummary
 import com.example.zoterohelpernative.ui.components.BackgroundCanvas
 import com.example.zoterohelpernative.ui.components.CollectionsSidebar
 import com.example.zoterohelpernative.ui.components.ItemDetailsPanel
@@ -112,6 +114,18 @@ fun LibraryScreen(
                         color = Color(0x1AFFFFFF),
                         borderColor = Color(0x33FFFFFF)
                     ) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                        LibraryFilterBar(
+                            searchQuery = state.searchQuery,
+                            onSearchQueryChange = { viewModel.setSearchQuery(it) },
+                            sortOption = state.sortOption,
+                            sortAscending = state.sortAscending,
+                            onSortOptionSelect = { viewModel.setSortOption(it) },
+                            filterTag = state.filterTag,
+                            allTags = state.allTags,
+                            onFilterTagSelect = { viewModel.setFilterTag(it) }
+                        )
+                        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                         if (state.isLoading) {
                             CircularProgressIndicator(
                                 modifier = Modifier.align(Alignment.Center),
@@ -164,17 +178,24 @@ fun LibraryScreen(
                                     verticalArrangement = Arrangement.spacedBy(16.dp),
                                     modifier = Modifier.fillMaxSize()
                                 ) {
-                                    items(items) { item ->
+                                    items(items, key = { it.key }) { item ->
                                         val isSelected = state.activeItem?.key == item.key
+                                        val subtitle = listOfNotNull(
+                                            item.data.authorSummary,
+                                            item.data.year?.toString(),
+                                            item.data.itemType?.replaceFirstChar { it.uppercase() }
+                                        ).joinToString("  •  ")
                                         LibraryItemCard(
                                             title = item.data.title ?: "Senza Titolo",
-                                            itemType = item.data.itemType ?: "Document",
+                                            subtitle = subtitle.ifBlank { "Documento" },
                                             isSelected = isSelected,
                                             onClick = { viewModel.setActiveItem(item) }
                                         )
                                     }
                                 }
                             }
+                        }
+                        }
                         }
                     }
                 }
@@ -204,7 +225,140 @@ fun LibraryScreen(
 }
 
 @Composable
-fun LibraryItemCard(title: String, itemType: String, isSelected: Boolean, onClick: () -> Unit) {
+fun LibraryFilterBar(
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    sortOption: com.example.zoterohelpernative.ui.LibrarySortOption,
+    sortAscending: Boolean,
+    onSortOptionSelect: (com.example.zoterohelpernative.ui.LibrarySortOption) -> Unit,
+    filterTag: String?,
+    allTags: List<String>,
+    onFilterTagSelect: (String?) -> Unit
+) {
+    var sortMenuOpen by remember { mutableStateOf(false) }
+    var tagMenuOpen by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Search field
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = onSearchQueryChange,
+            modifier = Modifier.weight(1f),
+            singleLine = true,
+            placeholder = { Text("Cerca per titolo, autore o anno…", color = Color(0x80FFFFFF)) },
+            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = Color(0xB3FFFFFF)) },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { onSearchQueryChange("") }) {
+                        Icon(Icons.Outlined.Close, contentDescription = "Pulisci ricerca", tint = Color(0xB3FFFFFF))
+                    }
+                }
+            },
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                cursorColor = Color(0xFF60A5FA),
+                focusedBorderColor = Color(0x8060A5FA),
+                unfocusedBorderColor = Color(0x33FFFFFF)
+            )
+        )
+
+        // Sort selector
+        Box {
+            FilterChip(
+                selected = false,
+                onClick = { sortMenuOpen = true },
+                label = { Text("${sortOption.label} ${if (sortAscending) "↑" else "↓"}", color = Color.White) },
+                leadingIcon = {
+                    Icon(Icons.AutoMirrored.Outlined.Sort, contentDescription = "Ordina", tint = Color(0xFF60A5FA))
+                },
+                border = FilterChipDefaults.filterChipBorder(
+                    enabled = true, selected = false,
+                    borderColor = Color(0x33FFFFFF)
+                )
+            )
+            DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {
+                com.example.zoterohelpernative.ui.LibrarySortOption.entries.forEach { option ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                if (option == sortOption) "${option.label} ${if (sortAscending) "↑" else "↓"}"
+                                else option.label
+                            )
+                        },
+                        leadingIcon = {
+                            if (option == sortOption) {
+                                Icon(Icons.Outlined.Check, contentDescription = null)
+                            }
+                        },
+                        onClick = {
+                            onSortOptionSelect(option)
+                            // Keep the menu open when toggling direction on the active option
+                            if (option != sortOption) sortMenuOpen = false
+                        }
+                    )
+                }
+            }
+        }
+
+        // Tag filter
+        Box {
+            FilterChip(
+                selected = filterTag != null,
+                onClick = { tagMenuOpen = true },
+                label = { Text(filterTag ?: "Tag", color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                leadingIcon = {
+                    Icon(Icons.Outlined.Sell, contentDescription = "Filtra per tag", tint = if (filterTag != null) Color(0xFF34D399) else Color(0xB3FFFFFF))
+                },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = Color(0x3334D399)
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    enabled = true, selected = filterTag != null,
+                    borderColor = Color(0x33FFFFFF),
+                    selectedBorderColor = Color(0x8034D399)
+                )
+            )
+            DropdownMenu(
+                expanded = tagMenuOpen,
+                onDismissRequest = { tagMenuOpen = false },
+                modifier = Modifier.heightIn(max = 400.dp)
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Tutti i documenti") },
+                    leadingIcon = { if (filterTag == null) Icon(Icons.Outlined.Check, contentDescription = null) },
+                    onClick = {
+                        onFilterTagSelect(null)
+                        tagMenuOpen = false
+                    }
+                )
+                if (allTags.isEmpty()) {
+                    DropdownMenuItem(text = { Text("Nessun tag in libreria") }, enabled = false, onClick = {})
+                }
+                allTags.forEach { tag ->
+                    DropdownMenuItem(
+                        text = { Text(tag) },
+                        leadingIcon = { if (filterTag == tag) Icon(Icons.Outlined.Check, contentDescription = null) },
+                        onClick = {
+                            onFilterTagSelect(tag)
+                            tagMenuOpen = false
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LibraryItemCard(title: String, subtitle: String, isSelected: Boolean, onClick: () -> Unit) {
     GlassSurface(
         modifier = Modifier
             .fillMaxWidth()
@@ -242,9 +396,11 @@ fun LibraryItemCard(title: String, itemType: String, isSelected: Boolean, onClic
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = itemType.replaceFirstChar { it.uppercase() },
+                    text = subtitle,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xB3FFFFFF)
+                    color = Color(0xB3FFFFFF),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }

@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import androidx.compose.material.icons.outlined.*
@@ -69,7 +70,8 @@ data class ReaderState(
     
     val isLoadingPdf: Boolean = false,
     val pdfError: String? = null,
-    val pdfTheme: String = "light"
+    val pdfTheme: String = "light",
+    val syncError: String? = null
 )
 
 class ReaderViewModel(private val settingsRepository: SettingsRepository) : ViewModel() {
@@ -350,6 +352,31 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
         _state.update { it.copy(readerSidebarOpen = !it.readerSidebarOpen) }
     }
 
+    fun addHighlight(parentItemKey: String, nativeRects: List<androidx.compose.ui.geometry.Rect>, extractedText: String) {
+        if (nativeRects.isEmpty()) return
+        val s = _state.value
+        val rectsJson = nativeRects.joinToString(",") { "[${it.left},${it.top},${it.right},${it.bottom}]" }
+        val positionJson = "{\"pageIndex\":${s.currentPage},\"rects\":[$rectsJson]}"
+        // Zotero PDF sort index format: pageIndex|charOffset|topOffset
+        val topOffset = (s.pdfNativeHeight - nativeRects.first().top).toInt().coerceIn(0, 99999)
+        val sortIndexStr = String.format("%05d|%06d|%05d", s.currentPage, 0, topOffset)
+        val newAnn = ItemData(
+            key = generateZoteroKey(),
+            version = 0,
+            itemType = "annotation",
+            parentItem = parentItemKey,
+            annotationType = "highlight",
+            annotationText = extractedText,
+            annotationComment = "",
+            annotationColor = s.activeColorHex,
+            annotationPosition = positionJson,
+            annotationPageLabel = (s.currentPage + 1).toString(),
+            annotationSortIndex = sortIndexStr,
+            tags = emptyList()
+        )
+        addAnnotation(newAnn)
+    }
+
     fun addAnnotation(annotation: ItemData) {
         val newAnnotations = _state.value.annotations.toMutableList()
         
@@ -492,9 +519,9 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
             pushUndoState()
             newAnnotations.add(annotation)
             _state.update { it.copy(annotations = newAnnotations) }
-            
+
             // Sync new annotation
-            syncItemToZotero(annotation, isNew = true)
+            syncItemToZotero(annotation)
         } else {
             // Find the merged annotation to sync
             val mergedAnn = newAnnotations.find { it.key == annotation.key } 
@@ -509,10 +536,10 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
         pushUndoState()
         val newAnnotations = _state.value.annotations.filter { it.key != annotation.key }
         _state.update { it.copy(annotations = newAnnotations) }
-        
-        // Delete from Zotero
-        if (!annotation.key.startsWith("local_")) {
-            deleteItemFromZotero(annotation.key, annotation.version.toLong())
+
+        // Delete from Zotero (version 0 = never synced, nothing to delete remotely)
+        if (annotation.version != 0L && !annotation.key.startsWith("local_")) {
+            deleteItemFromZotero(annotation.key, annotation.version)
         }
     }
 
@@ -565,7 +592,9 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
                         
                         if (newRects.length() == 0) {
                             currentAnnotations[i] = ann.copy(annotationType = "DELETED_MARKER")
-                            deleteItemFromZotero(ann.key, ann.version.toLong())
+                            if (ann.version != 0L) {
+                                deleteItemFromZotero(ann.key, ann.version)
+                            }
                         } else {
                             annJson.put("rects", newRects)
                             val updatedAnn = ann.copy(annotationPosition = annJson.toString())
@@ -586,34 +615,102 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
         }
     }
 
-    private fun syncItemToZotero(itemData: ItemData, isNew: Boolean = false) {
-        viewModelScope.launch {
-            try {
-                val apiKey = settingsRepository.zoteroApiKey.firstOrNull()
-                val userId = settingsRepository.zoteroUserId.firstOrNull()
-                if (apiKey.isNullOrEmpty() || userId.isNullOrEmpty()) return@launch
+    // Zotero object keys: 8 chars from this alphabet (no 0, 1, O to avoid ambiguity).
+    // The API rejects items whose key has any other format.
+    private val zoteroKeyAlphabet = "23456789ABCDEFGHIJKLMNPQRSTUVWXYZ"
 
-                if (isNew || itemData.key.startsWith("local_")) {
-                    apiService.createItems(userId, apiKey, items = listOf(itemData))
-                } else {
-                    apiService.updateItem(userId, itemData.key, apiKey, itemData = itemData)
+    fun generateZoteroKey(): String =
+        (1..8).map { zoteroKeyAlphabet.random() }.joinToString("")
+
+    private val syncMutex = kotlinx.coroutines.sync.Mutex()
+    private var syncErrorJob: kotlinx.coroutines.Job? = null
+
+    private fun setSyncError(message: String) {
+        _state.update { it.copy(syncError = message) }
+        syncErrorJob?.cancel()
+        syncErrorJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(8000)
+            _state.update { it.copy(syncError = null) }
+        }
+    }
+
+    private fun updateLocalAnnotation(key: String, transform: (ItemData) -> ItemData) {
+        _state.update { s ->
+            s.copy(annotations = s.annotations.map { if (it.key == key) transform(it) else it })
+        }
+    }
+
+    // "annotation" items reject fields like title/collections: strip them before writing.
+    private fun sanitizeForWrite(itemData: ItemData): ItemData =
+        if (itemData.itemType == "annotation") itemData.copy(title = null, collections = null) else itemData
+
+    private fun syncItemToZotero(itemData: ItemData) {
+        viewModelScope.launch {
+            syncMutex.withLock {
+                try {
+                    val apiKey = settingsRepository.zoteroApiKey.firstOrNull()
+                    val userId = settingsRepository.zoteroUserId.firstOrNull()
+                    if (apiKey.isNullOrEmpty() || userId.isNullOrEmpty()) {
+                        setSyncError("Credenziali Zotero mancanti: annotazione non salvata sul server.")
+                        return@withLock
+                    }
+
+                    // Re-read from state: a previous sync may have assigned key/version
+                    val current = _state.value.annotations.find { it.key == itemData.key } ?: itemData
+                    val payload = sanitizeForWrite(current)
+
+                    if (payload.version == 0L) {
+                        val response = apiService.createItems(userId, apiKey, items = listOf(payload))
+                        val body = response.body()
+                        val created = body?.successful?.values?.firstOrNull()
+                        when {
+                            response.isSuccessful && created != null -> {
+                                updateLocalAnnotation(current.key) { it.copy(key = created.key, version = created.version) }
+                            }
+                            else -> {
+                                val reason = body?.failed?.values?.firstOrNull()?.message
+                                    ?: "HTTP ${response.code()}"
+                                setSyncError("Salvataggio annotazione fallito: $reason")
+                            }
+                        }
+                    } else {
+                        val response = apiService.updateItem(userId, payload.key, apiKey, itemData = payload)
+                        if (response.isSuccessful) {
+                            response.headers()["Last-Modified-Version"]?.toLongOrNull()?.let { newVersion ->
+                                updateLocalAnnotation(payload.key) { it.copy(version = newVersion) }
+                            }
+                        } else {
+                            setSyncError("Aggiornamento annotazione fallito: HTTP ${response.code()}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    setSyncError("Errore di rete: annotazione non salvata (${e.localizedMessage ?: "sconosciuto"})")
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
         }
     }
 
     private fun deleteItemFromZotero(itemKey: String, version: Long) {
         viewModelScope.launch {
-            try {
-                val apiKey = settingsRepository.zoteroApiKey.firstOrNull()
-                val userId = settingsRepository.zoteroUserId.firstOrNull()
-                if (apiKey.isNullOrEmpty() || userId.isNullOrEmpty()) return@launch
+            syncMutex.withLock {
+                try {
+                    val apiKey = settingsRepository.zoteroApiKey.firstOrNull()
+                    val userId = settingsRepository.zoteroUserId.firstOrNull()
+                    if (apiKey.isNullOrEmpty() || userId.isNullOrEmpty()) {
+                        setSyncError("Credenziali Zotero mancanti: eliminazione non sincronizzata.")
+                        return@withLock
+                    }
 
-                apiService.deleteItem(userId, itemKey, apiKey, version = version)
-            } catch (e: Exception) {
-                e.printStackTrace()
+                    val response = apiService.deleteItem(userId, itemKey, apiKey, version = version)
+                    // 404 = already gone on server, treat as success
+                    if (!response.isSuccessful && response.code() != 404) {
+                        setSyncError("Eliminazione annotazione fallita: HTTP ${response.code()}")
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    setSyncError("Errore di rete durante l'eliminazione (${e.localizedMessage ?: "sconosciuto"})")
+                }
             }
         }
     }
@@ -622,7 +719,14 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
 
     fun loadDocument(itemKey: String, cacheDir: File) {
         viewModelScope.launch {
-            _state.update { it.copy(isLoadingPdf = true, pdfError = null) }
+            _state.update {
+                it.copy(
+                    isLoadingPdf = true,
+                    pdfError = null,
+                    annotations = emptyList(),
+                    selectedAnnotationId = null
+                )
+            }
             try {
                 val apiKey = settingsRepository.zoteroApiKey.firstOrNull()
                 val userId = settingsRepository.zoteroUserId.firstOrNull()
@@ -654,15 +758,21 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
                     return@launch
                 }
                 
-                // 3.5 Fetch existing annotations for this attachment
+                // 3.5 Fetch existing annotations for this attachment (paginated)
                 try {
-                    val annotationsResponse = apiService.getItemChildren(userId, attachmentKey, apiKey)
-                    if (annotationsResponse.isSuccessful) {
-                        val remoteAnnotations = annotationsResponse.body()
-                            ?.filter { it.data.itemType == "annotation" }
-                            ?.map { it.data } ?: emptyList()
-                        _state.update { it.copy(annotations = remoteAnnotations) }
+                    val remoteAnnotations = mutableListOf<ItemData>()
+                    var start = 0
+                    while (true) {
+                        val annotationsResponse = apiService.getItemChildren(userId, attachmentKey, apiKey, start = start)
+                        if (!annotationsResponse.isSuccessful) break
+                        val page = annotationsResponse.body() ?: emptyList()
+                        remoteAnnotations += page
+                            .filter { it.data.itemType == "annotation" }
+                            .map { it.data }
+                        if (page.size < 100 || start >= 5000) break
+                        start += 100
                     }
+                    _state.update { it.copy(annotations = remoteAnnotations) }
 
                     val tagsResponse = apiService.getTags(userId, apiKey)
                     if (tagsResponse.isSuccessful) {

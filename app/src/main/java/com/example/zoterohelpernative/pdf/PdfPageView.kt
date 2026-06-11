@@ -127,32 +127,83 @@ fun PdfPageView(
             .onGloballyPositioned { coordinates ->
                 displaySize = coordinates.size
             }
-            .pointerInput(Unit) {
+            .pointerInput(structuredText, pdfNativeWidth, pdfNativeHeight, pdfNativeBoundsLeft, pdfNativeBoundsTop, currentPage, penHighlightOnly, fingerSelectionOnly, snapToWord) {
+                // Hit test in content coordinates (before pan/zoom transform)
+                fun findAnnotationAt(localOffset: Offset): String? {
+                    if (pdfNativeWidth <= 0f || displaySize.width <= 0) return null
+                    val renderScale = minOf(displaySize.width.toFloat() / pdfNativeWidth, displaySize.height.toFloat() / pdfNativeHeight)
+                    val renderedWidth = pdfNativeWidth * renderScale
+                    val renderedHeight = pdfNativeHeight * renderScale
+                    val offsetX = (displaySize.width - renderedWidth) / 2f
+                    val offsetY = (displaySize.height - renderedHeight) / 2f
+
+                    val rectRegex = Regex("""\[\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*,\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*,\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*,\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*\]""")
+                    val tapped = currentAnnotations.find { ann ->
+                        if (ann.annotationType == "highlight" && ann.annotationPosition != null) {
+                            val posStr = ann.annotationPosition
+                            val pageIndexMatch = Regex("""\"pageIndex\"\s*:\s*(\d+)""").find(posStr)
+                            val annPageIndex = pageIndexMatch?.groupValues?.get(1)?.toIntOrNull()
+                            if (annPageIndex != null && annPageIndex != currentPage) return@find false
+
+                            var hit = false
+                            for (match in rectRegex.findAll(posStr)) {
+                                val (x1, y1, x2, y2) = match.destructured
+                                val nativeLeft = x1.toFloatOrNull() ?: continue
+                                val nativeTop = y1.toFloatOrNull() ?: continue
+                                val nativeRight = x2.toFloatOrNull() ?: continue
+                                val nativeBottom = y2.toFloatOrNull() ?: continue
+
+                                val nLeft = minOf(nativeLeft, nativeRight)
+                                val nRight = maxOf(nativeLeft, nativeRight)
+                                val yA = pdfNativeHeight - nativeTop
+                                val yB = pdfNativeHeight - nativeBottom
+                                val nTop = minOf(yA, yB)
+                                val nBottom = maxOf(yA, yB)
+
+                                val sLeft = (nLeft - pdfNativeBoundsLeft) * renderScale + offsetX
+                                val sTop = (nTop - pdfNativeBoundsTop) * renderScale + offsetY
+                                val sRight = (nRight - pdfNativeBoundsLeft) * renderScale + offsetX
+                                val sBottom = (nBottom - pdfNativeBoundsTop) * renderScale + offsetY
+
+                                if (Rect(sLeft, sTop, sRight, sBottom).inflate(20f).contains(localOffset)) {
+                                    hit = true
+                                    break
+                                }
+                            }
+                            hit
+                        } else false
+                    }
+                    return tapped?.key
+                }
+
                 awaitEachGesture {
                     val down = awaitFirstDown()
                     val isStylus = down.type == androidx.compose.ui.input.pointer.PointerType.Stylus || down.type == androidx.compose.ui.input.pointer.PointerType.Eraser
-                    
-                    var toolIsHighlight = !isStylus
-                    if (penHighlightOnly) {
-                        toolIsHighlight = isStylus
-                    }
-                    
-                    var toolIsPanZoom = isStylus
-                    if (fingerSelectionOnly) {
-                        toolIsPanZoom = !isStylus
-                    }
-                    
-                    if (toolIsPanZoom) {
+
+                    // Exactly one pointer type highlights, the other pans/zooms.
+                    // Tapping an annotation works with both pointer types in both modes.
+                    val stylusHighlights = penHighlightOnly || fingerSelectionOnly
+                    val pointerHighlights = if (stylusHighlights) isStylus else !isStylus
+
+                    if (!pointerHighlights) {
                         var startCentroid = Offset.Zero
-                        
+                        var isTap = true
+
                         while (true) {
                             val event = awaitPointerEvent()
                             val pointers = event.changes
-                            
+
                             if (pointers.any { it.pressed }) {
+                                if (pointers.size > 1) {
+                                    isTap = false
+                                } else {
+                                    val diff = pointers.first().position - down.position
+                                    if (Math.hypot(diff.x.toDouble(), diff.y.toDouble()) > 10.0) isTap = false
+                                }
+
                                 val centroid = pointers.fold(Offset.Zero) { acc, p -> acc + p.position } / pointers.size.toFloat()
                                 if (startCentroid == Offset.Zero) startCentroid = centroid
-                                
+
                                 if (pointers.size > 1) {
                                     val dist = (pointers[0].position - pointers[1].position).getDistance()
                                     val prevDist = (pointers[0].previousPosition - pointers[1].previousPosition).getDistance()
@@ -166,15 +217,14 @@ fun PdfPageView(
                                 pointers.forEach { it.consume() }
                             } else {
                                 lastGestureEndTime = System.currentTimeMillis()
+                                if (isTap) {
+                                    val localOffset = (down.position - currentPan) / currentZoom
+                                    onAnnotationTapped(findAnnotationAt(localOffset), down.position)
+                                }
                                 break
                             }
                         }
                     } else {
-                        var isHighlighting = true
-                        if (penHighlightOnly && !isStylus) isHighlighting = false
-                        
-                        if (!isHighlighting) return@awaitEachGesture
-                        
                         dragStartPoint = (down.position - currentPan) / currentZoom
                         dragEndPoint = (down.position - currentPan) / currentZoom
                         currentDragRects = emptyList()
@@ -346,60 +396,7 @@ fun PdfPageView(
                             } else {
                                 if (isTap) {
                                     val localOffset = (down.position - currentPan) / currentZoom
-                                    if ((fingerSelectionOnly && !isStylus) || (!fingerSelectionOnly)) {
-                                        if (pdfNativeWidth > 0 && displaySize.width > 0) {
-                                            val renderScale = minOf(displaySize.width.toFloat() / pdfNativeWidth, displaySize.height.toFloat() / pdfNativeHeight)
-                                            val renderedWidth = pdfNativeWidth * renderScale
-                                            val renderedHeight = pdfNativeHeight * renderScale
-                                            val offsetX = (displaySize.width - renderedWidth) / 2f
-                                            val offsetY = (displaySize.height - renderedHeight) / 2f
-                                            
-                                            val tappedAnn = currentAnnotations.find { ann ->
-                                                if (ann.annotationType == "highlight" && ann.annotationPosition != null) {
-                                                    val posStr = ann.annotationPosition
-                                                    val pageIndexMatch = Regex("""\"pageIndex\"\s*:\s*(\d+)""").find(posStr)
-                                                    val annPageIndex = pageIndexMatch?.groupValues?.get(1)?.toIntOrNull()
-                                                    if (annPageIndex != null && annPageIndex != currentPage) return@find false
-                                                    
-                                                    val regex = Regex("""\[\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*,\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*,\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*,\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*\]""")
-                                                    val matches = regex.findAll(posStr)
-                                                    
-                                                    var hit = false
-                                                    for (match in matches) {
-                                                        val (x1, y1, x2, y2) = match.destructured
-                                                        val nativeLeft = x1.toFloatOrNull() ?: continue
-                                                        val nativeTop = y1.toFloatOrNull() ?: continue
-                                                        val nativeRight = x2.toFloatOrNull() ?: continue
-                                                        val nativeBottom = y2.toFloatOrNull() ?: continue
-                                                        
-                                                        val nLeft = minOf(nativeLeft, nativeRight)
-                                                        val nRight = maxOf(nativeLeft, nativeRight)
-                                                        val yA = pdfNativeHeight - nativeTop
-                                                        val yB = pdfNativeHeight - nativeBottom
-                                                        val nTop = minOf(yA, yB)
-                                                        val nBottom = maxOf(yA, yB)
-                                                        
-                                                        val sLeft = (nLeft - pdfNativeBoundsLeft) * renderScale + offsetX
-                                                        val sTop = (nTop - pdfNativeBoundsTop) * renderScale + offsetY
-                                                        val sRight = (nRight - pdfNativeBoundsLeft) * renderScale + offsetX
-                                                        val sBottom = (nBottom - pdfNativeBoundsTop) * renderScale + offsetY
-                                                        
-                                                        val sRect = Rect(sLeft, sTop, sRight, sBottom)
-                                                        if (sRect.inflate(20f).contains(localOffset)) {
-                                                            hit = true
-                                                            break
-                                                        }
-                                                    }
-                                                    hit
-                                                } else false
-                                            }
-                                            if (tappedAnn != null) {
-                                                onAnnotationTapped(tappedAnn.key, down.position)
-                                            } else {
-                                                onAnnotationTapped(null, Offset.Zero)
-                                            }
-                                        }
-                                    }
+                                    onAnnotationTapped(findAnnotationAt(localOffset), down.position)
                                 } else {
                                     if (currentNativeRects.isNotEmpty()) {
                                         onAnnotationCreated(currentNativeRects, currentExtractedText ?: "")

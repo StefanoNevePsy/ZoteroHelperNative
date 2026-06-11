@@ -27,6 +27,7 @@ interface ZoteroApiService {
         @Header("Zotero-API-Version") apiVersion: String = "3",
         @Query("itemType") itemType: String? = null,
         @Query("limit") limit: Int = 100,
+        @Query("start") start: Int = 0,
         @Query("itemKey") itemKey: String? = null
     ): Response<List<ZoteroItem>>
 
@@ -36,7 +37,8 @@ interface ZoteroApiService {
         @Path("itemKey") itemKey: String,
         @Header("Zotero-API-Key") apiKey: String,
         @Header("Zotero-API-Version") apiVersion: String = "3",
-        @Query("limit") limit: Int = 100
+        @Query("limit") limit: Int = 100,
+        @Query("start") start: Int = 0
     ): Response<List<ZoteroItem>>
 
     @GET("users/{userId}/tags")
@@ -53,7 +55,7 @@ interface ZoteroApiService {
         @Header("Zotero-API-Key") apiKey: String,
         @Header("Zotero-API-Version") apiVersion: String = "3",
         @Body items: List<ItemData>
-    ): Response<Any> // Returns a SuccessfulItemCreationResponse
+    ): Response<ZoteroWriteResponse>
 
     @PATCH("users/{userId}/items/{itemKey}")
     suspend fun updateItem(

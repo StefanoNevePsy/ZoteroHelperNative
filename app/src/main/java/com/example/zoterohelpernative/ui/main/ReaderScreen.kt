@@ -144,27 +144,7 @@ fun ReaderScreen(
                 if (state.activeTool == ActiveTool.ERASER) {
                     viewModel.eraseAnnotationsIntersecting(nativeRects, state.currentPage)
                 } else {
-                    val rectsJson = nativeRects.joinToString(",") { "[${it.left},${it.top},${it.right},${it.bottom}]" }
-                    val positionJson = "{\"pageIndex\":${state.currentPage},\"rects\":[$rectsJson]}"
-                    val firstTop = if (nativeRects.isNotEmpty()) nativeRects.first().top else 0f
-                    val sortY = (state.pdfNativeHeight - firstTop).toInt()
-                    val sortIndexStr = String.format("%05d|%06d", state.currentPage, sortY)
-                    val newAnn = com.example.zoterohelpernative.data.ItemData(
-                        key = "local_${System.currentTimeMillis()}",
-                        version = 0,
-                        itemType = "annotation",
-                        title = "Highlight",
-                        parentItem = itemKey,
-                        annotationType = "highlight",
-                        annotationText = extractedText,
-                        annotationComment = null,
-                        annotationColor = state.activeColorHex,
-                        annotationPosition = positionJson,
-                        annotationPageLabel = (state.currentPage + 1).toString(),
-                        annotationSortIndex = sortIndexStr,
-                        tags = emptyList()
-                    )
-                    viewModel.addAnnotation(newAnn)
+                    viewModel.addHighlight(itemKey, nativeRects, extractedText)
                 }
             },
             onAnnotationTapped = { id, offset ->
@@ -266,9 +246,11 @@ fun ReaderScreen(
                     
                     val rawX = popupPos.x - (popupWidthPx / 2)
                     val rawY = popupPos.y + with(density) { 20.dp.toPx() }
-                    
-                    val clampedX = rawX.coerceIn(16f, screenWidthPx - popupWidthPx - 16f)
-                    val clampedY = rawY.coerceIn(16f, screenHeightPx - popupHeightPx - 16f)
+
+                    val maxX = (screenWidthPx - popupWidthPx - 16f).coerceAtLeast(16f)
+                    val maxY = (screenHeightPx - popupHeightPx - 16f).coerceAtLeast(16f)
+                    val clampedX = rawX.coerceIn(16f, maxX)
+                    val clampedY = rawY.coerceIn(16f, maxY)
 
                     Box(
                         modifier = Modifier
@@ -489,5 +471,27 @@ fun ReaderScreen(
         }
 
         } // close else
+
+        // Sync error banner (annotation save/delete failures are no longer silent)
+        state.syncError?.let { message ->
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 24.dp, start = 16.dp, end = 16.dp)
+            ) {
+                GlassSurface(
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                    color = Color(0xE67F1D1D),
+                    borderColor = Color(0x66FCA5A5)
+                ) {
+                    Text(
+                        text = message,
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                    )
+                }
+            }
+        }
     }
 }

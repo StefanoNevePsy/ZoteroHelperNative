@@ -68,6 +68,19 @@ data class ZoteroTag(
     val type: Int? = null
 )
 
+// Response of POST /users/{id}/items: the call returns 200 even when single
+// items are rejected, so "failed" must always be inspected.
+data class ZoteroWriteResponse(
+    val successful: Map<String, ZoteroItem>?,
+    val success: Map<String, String>?,
+    val failed: Map<String, ZoteroWriteError>?
+)
+
+data class ZoteroWriteError(
+    val code: Int?,
+    val message: String?
+)
+
 data class ZoteroCollection(
     val key: String,
     val version: Long,
