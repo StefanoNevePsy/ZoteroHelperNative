@@ -161,6 +161,135 @@ class PdfEngine {
         return@withContext if (sb.length > maxChars) sb.substring(0, maxChars) else sb.toString()
     }
 
+    /**
+     * Finds a verbatim quote in the document and returns highlight-ready rects.
+     * Search is whitespace-insensitive and tolerant of typographic quotes/dashes.
+     * Rects use the same convention as manual highlights: y measured from the
+     * bottom of the page (Zotero coordinates), one rect per text line.
+     */
+    suspend fun findText(query: String, preferredPage: Int? = null): TextSearchResult? {
+        if (preferredPage != null) {
+            findTextOnPage(preferredPage, query)?.let { return it }
+            for (delta in listOf(-1, 1)) {
+                findTextOnPage(preferredPage + delta, query)?.let { return it }
+            }
+        }
+        for (p in 0 until pageCount) {
+            if (preferredPage != null && kotlin.math.abs(p - preferredPage) <= 1) continue
+            findTextOnPage(p, query)?.let { return it }
+        }
+        return null
+    }
+
+    suspend fun findTextOnPage(pageIndex: Int, query: String): TextSearchResult? = withContext(Dispatchers.IO) {
+        val doc = document ?: return@withContext null
+        if (pageIndex < 0 || pageIndex >= pageCount) return@withContext null
+        val normQuery = normalizeForSearch(query)
+        if (normQuery.isBlank()) return@withContext null
+
+        var page: Page? = null
+        try {
+            page = doc.loadPage(pageIndex)
+            val bounds = page.bounds
+            val pageHeight = bounds.y1 - bounds.y0
+            val structuredText = page.toStructuredText("preserve-whitespace") ?: return@withContext null
+
+            // Flatten chars; line breaks and wide gaps become whitespace separators
+            val raw = StringBuilder()
+            val charLines = mutableListOf<StructuredText.TextLine?>()
+            val charQuads = mutableListOf<Rect?>()
+            for (block in structuredText.blocks) {
+                for (line in block.lines) {
+                    var lastRight = -1f
+                    for (char in line.chars) {
+                        val q = char.quad.toRect()
+                        if (lastRight != -1f && q.x0 - lastRight > 2.0f) {
+                            raw.append(' '); charLines.add(null); charQuads.add(null)
+                        }
+                        raw.append(char.c.toChar()); charLines.add(line); charQuads.add(q)
+                        lastRight = q.x1
+                    }
+                    raw.append(' '); charLines.add(null); charQuads.add(null)
+                }
+            }
+
+            // Normalized text with a map back to raw char indices
+            val norm = StringBuilder()
+            val normToRaw = mutableListOf<Int>()
+            var lastWasSpace = true
+            for (i in raw.indices) {
+                val c = normalizeChar(raw[i]) ?: continue
+                if (c.isWhitespace()) {
+                    if (!lastWasSpace) {
+                        norm.append(' '); normToRaw.add(i); lastWasSpace = true
+                    }
+                } else {
+                    norm.append(c); normToRaw.add(i); lastWasSpace = false
+                }
+            }
+
+            val startNorm = norm.indexOf(normQuery)
+            if (startNorm < 0) return@withContext null
+            val rawStart = normToRaw[startNorm]
+            val rawEnd = normToRaw[startNorm + normQuery.length - 1]
+
+            // One rect per line, using the line bbox for height (same as manual highlights)
+            val byLine = LinkedHashMap<StructuredText.TextLine, MutableList<Rect>>()
+            val matched = StringBuilder()
+            for (i in rawStart..rawEnd) {
+                matched.append(raw[i])
+                val line = charLines[i] ?: continue
+                val q = charQuads[i] ?: continue
+                byLine.getOrPut(line) { mutableListOf() }.add(q)
+            }
+
+            val rects = byLine.map { (line, quads) ->
+                val left = quads.minOf { it.x0 }
+                val right = quads.maxOf { it.x1 }
+                val top = line.bbox.y0
+                val bottom = line.bbox.y1
+                RectF(left, pageHeight - bottom, right, pageHeight - top)
+            }
+            if (rects.isEmpty()) return@withContext null
+
+            TextSearchResult(
+                pageIndex = pageIndex,
+                pageHeight = pageHeight,
+                rects = rects,
+                matchedText = matched.toString().trim().replace(Regex("\\s+"), " ")
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        } finally {
+            page?.destroy()
+        }
+    }
+
+    // Returns null for chars to drop entirely (soft hyphen)
+    private fun normalizeChar(c: Char): Char? = when (c) {
+        '\u00AD' -> null                                      // soft hyphen
+        '\u2018', '\u2019', '\u02BC' -> '\''                 // curly single quotes
+        '\u201C', '\u201D' -> '"'                            // curly double quotes
+        '\u2013', '\u2014', '\u2212' -> '-'                  // en/em dash, minus sign
+        '\u00A0' -> ' '                                       // non-breaking space
+        else -> c.lowercaseChar()
+    }
+
+    private fun normalizeForSearch(s: String): String {
+        val sb = StringBuilder()
+        var lastWasSpace = true
+        for (ch in s) {
+            val c = normalizeChar(ch) ?: continue
+            if (c.isWhitespace()) {
+                if (!lastWasSpace) { sb.append(' '); lastWasSpace = true }
+            } else {
+                sb.append(c); lastWasSpace = false
+            }
+        }
+        return sb.toString().trim()
+    }
+
     fun close() {
         document?.destroy()
         document = null
@@ -180,4 +309,11 @@ data class PageRenderResult(
 data class TextRect(
     val text: String,
     val rect: android.graphics.RectF
+)
+
+data class TextSearchResult(
+    val pageIndex: Int, // 0-based
+    val pageHeight: Float,
+    val rects: List<RectF>, // Zotero coordinates: y from the bottom of the page
+    val matchedText: String
 )

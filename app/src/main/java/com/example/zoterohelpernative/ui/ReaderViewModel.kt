@@ -358,6 +358,7 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
         if (_state.value.currentPage > 0) {
             _state.update { it.copy(currentPage = it.currentPage - 1) }
             renderCurrentPage()
+            persistCurrentPage()
         }
     }
 
@@ -365,6 +366,19 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
         if (_state.value.currentPage < _state.value.numPages - 1) {
             _state.update { it.copy(currentPage = it.currentPage + 1) }
             renderCurrentPage()
+            persistCurrentPage()
+        }
+    }
+
+    private fun persistCurrentPage() {
+        val key = currentAttachmentKey ?: return
+        val page = _state.value.currentPage
+        viewModelScope.launch {
+            try {
+                settingsRepository.saveLastReadPage(key, page)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -375,26 +389,46 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
     fun addHighlight(parentItemKey: String, nativeRects: List<androidx.compose.ui.geometry.Rect>, extractedText: String) {
         if (nativeRects.isEmpty()) return
         val s = _state.value
-        val rectsJson = nativeRects.joinToString(",") { "[${it.left},${it.top},${it.right},${it.bottom}]" }
-        val positionJson = "{\"pageIndex\":${s.currentPage},\"rects\":[$rectsJson]}"
+        val newAnn = buildHighlightItem(
+            parentItemKey = parentItemKey,
+            pageIndex = s.currentPage,
+            pageHeight = s.pdfNativeHeight,
+            rects = nativeRects.map { android.graphics.RectF(it.left, it.top, it.right, it.bottom) },
+            text = extractedText,
+            colorHex = s.activeColorHex
+        )
+        addAnnotation(newAnn)
+    }
+
+    // rects in Zotero coordinates (y from page bottom), like annotationPosition expects
+    private fun buildHighlightItem(
+        parentItemKey: String,
+        pageIndex: Int,
+        pageHeight: Float,
+        rects: List<android.graphics.RectF>,
+        text: String,
+        colorHex: String,
+        comment: String? = null
+    ): ItemData {
+        val rectsJson = rects.joinToString(",") { "[${it.left},${it.top},${it.right},${it.bottom}]" }
+        val positionJson = "{\"pageIndex\":$pageIndex,\"rects\":[$rectsJson]}"
         // Zotero PDF sort index format: pageIndex|charOffset|topOffset
-        val topOffset = (s.pdfNativeHeight - nativeRects.first().top).toInt().coerceIn(0, 99999)
-        val sortIndexStr = String.format("%05d|%06d|%05d", s.currentPage, 0, topOffset)
-        val newAnn = ItemData(
+        val topOffset = (pageHeight - rects.first().top).toInt().coerceIn(0, 99999)
+        val sortIndexStr = String.format("%05d|%06d|%05d", pageIndex, 0, topOffset)
+        return ItemData(
             key = generateZoteroKey(),
             version = 0,
             itemType = "annotation",
             parentItem = parentItemKey,
             annotationType = "highlight",
-            annotationText = extractedText,
-            annotationComment = "",
-            annotationColor = s.activeColorHex,
+            annotationText = text,
+            annotationComment = comment ?: "",
+            annotationColor = colorHex,
             annotationPosition = positionJson,
-            annotationPageLabel = (s.currentPage + 1).toString(),
+            annotationPageLabel = (pageIndex + 1).toString(),
             annotationSortIndex = sortIndexStr,
             tags = emptyList()
         )
-        addAnnotation(newAnn)
     }
 
     fun addAnnotation(annotation: ItemData) {
@@ -748,9 +782,91 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
     }
 
     private var documentTextCache: String? = null
+    private var currentAttachmentKey: String? = null
 
     fun clearChat() {
         _state.update { it.copy(chatMessages = emptyList()) }
+    }
+
+    private val highlightColorMap = mapOf(
+        "yellow" to "#ffd400",
+        "red" to "#ff6666",
+        "green" to "#5fb236",
+        "blue" to "#2ea8e5",
+        "purple" to "#a28ae5",
+        "magenta" to "#e56eee",
+        "orange" to "#f19837",
+        "gray" to "#aaaaaa"
+    )
+
+    private fun chatTools(): List<com.example.zoterohelpernative.data.GeminiTool> {
+        return listOf(
+            com.example.zoterohelpernative.data.GeminiTool(
+                functionDeclarations = listOf(
+                    com.example.zoterohelpernative.data.GeminiFunctionDeclaration(
+                        name = "create_highlight",
+                        description = "Crea un'evidenziazione permanente nel PDF su un passaggio del documento. " +
+                            "Usala quando l'utente chiede di evidenziare, marcare o segnare passaggi del testo. " +
+                            "Puoi chiamarla più volte per evidenziare più passaggi.",
+                        parameters = com.example.zoterohelpernative.data.GeminiSchema(
+                            type = "OBJECT",
+                            properties = mapOf(
+                                "quote" to com.example.zoterohelpernative.data.GeminiSchema(
+                                    type = "STRING",
+                                    description = "Citazione ESATTA e contigua copiata letteralmente dal testo del documento, " +
+                                        "tra 5 e 300 caratteri. Non parafrasare e non attraversare i marcatori [Pagina N]."
+                                ),
+                                "page" to com.example.zoterohelpernative.data.GeminiSchema(
+                                    type = "INTEGER",
+                                    description = "Numero della pagina in cui si trova la citazione, come indicato dai marcatori [Pagina N]."
+                                ),
+                                "color" to com.example.zoterohelpernative.data.GeminiSchema(
+                                    type = "STRING",
+                                    description = "Colore dell'evidenziazione (opzionale).",
+                                    enum = highlightColorMap.keys.toList()
+                                ),
+                                "comment" to com.example.zoterohelpernative.data.GeminiSchema(
+                                    type = "STRING",
+                                    description = "Breve nota da allegare all'evidenziazione (opzionale)."
+                                )
+                            ),
+                            required = listOf("quote", "page")
+                        )
+                    )
+                )
+            )
+        )
+    }
+
+    private suspend fun executeCreateHighlight(args: Map<String, Any?>?): Map<String, Any?> {
+        val quote = (args?.get("quote") as? String)?.trim()
+        val pageNumber = (args?.get("page") as? Number)?.toInt()
+        val colorName = (args?.get("color") as? String)?.lowercase()
+        val comment = (args?.get("comment") as? String)?.takeIf { it.isNotBlank() }
+        val parentKey = currentAttachmentKey
+
+        if (quote.isNullOrBlank() || parentKey == null) {
+            return mapOf("success" to false, "error" to "Parametro 'quote' mancante.")
+        }
+
+        val result = pdfEngine.findText(quote, preferredPage = pageNumber?.minus(1))
+            ?: return mapOf(
+                "success" to false,
+                "error" to "Testo non trovato nel documento. Riprova con una citazione esatta più breve e senza omissioni."
+            )
+
+        val colorHex = highlightColorMap[colorName] ?: _state.value.activeColorHex
+        val annotation = buildHighlightItem(
+            parentItemKey = parentKey,
+            pageIndex = result.pageIndex,
+            pageHeight = result.pageHeight,
+            rects = result.rects,
+            text = result.matchedText,
+            colorHex = colorHex,
+            comment = comment
+        )
+        addAnnotation(annotation)
+        return mapOf("success" to true, "page" to result.pageIndex + 1)
     }
 
     fun sendChatMessage(userText: String) {
@@ -778,7 +894,9 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
                     append("Sei un assistente di ricerca accademica integrato in un lettore PDF. ")
                     append("Rispondi in modo conciso e nella lingua dell'utente, basandoti sul documento fornito. ")
                     append("Se l'informazione non è nel documento, dillo esplicitamente. ")
-                    append("Quando citi un passaggio, indica la pagina (i marcatori [Pagina N] delimitano le pagine).\n\n")
+                    append("Quando citi un passaggio, indica la pagina (i marcatori [Pagina N] delimitano le pagine). ")
+                    append("Se l'utente chiede di evidenziare passaggi, usa lo strumento create_highlight con citazioni esatte ")
+                    append("copiate dal documento; al termine riassumi brevemente cosa hai evidenziato.\n\n")
                     if (docText.isBlank()) {
                         append("ATTENZIONE: non è stato possibile estrarre testo dal documento (potrebbe essere una scansione).")
                     } else {
@@ -787,40 +905,89 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
                     }
                 }
 
-                val history = _state.value.chatMessages
+                val contents = _state.value.chatMessages
                     .filter { !it.isError }
                     .map {
                         com.example.zoterohelpernative.data.GeminiContent(
                             role = it.role,
-                            parts = listOf(com.example.zoterohelpernative.data.GeminiPart(it.text))
+                            parts = listOf(com.example.zoterohelpernative.data.GeminiPart(text = it.text))
                         )
                     }
+                    .toMutableList()
 
-                val request = com.example.zoterohelpernative.data.GeminiRequest(
-                    contents = history,
-                    systemInstruction = com.example.zoterohelpernative.data.GeminiContent(
-                        parts = listOf(com.example.zoterohelpernative.data.GeminiPart(systemPrompt))
-                    )
+                val systemInstruction = com.example.zoterohelpernative.data.GeminiContent(
+                    parts = listOf(com.example.zoterohelpernative.data.GeminiPart(text = systemPrompt))
                 )
 
-                val response = geminiService.generateContent("gemini-flash-latest", apiKey, request)
-                val body = response.body()
-                val answer = body?.candidates?.firstOrNull()?.content?.parts?.joinToString("") { it.text }
+                var finalText: String? = null
+                var highlightsCreated = 0
 
-                if (response.isSuccessful && !answer.isNullOrBlank()) {
+                // Tool-use loop: the model may request highlights before answering
+                for (round in 0 until 4) {
+                    val request = com.example.zoterohelpernative.data.GeminiRequest(
+                        contents = contents,
+                        systemInstruction = systemInstruction,
+                        tools = chatTools()
+                    )
+                    val response = geminiService.generateContent("gemini-flash-latest", apiKey, request)
+                    val body = response.body()
+
+                    if (!response.isSuccessful) {
+                        val errorBody = try {
+                            response.errorBody()?.string()?.let { raw ->
+                                com.google.gson.Gson().fromJson(raw, com.example.zoterohelpernative.data.GeminiResponse::class.java)
+                            }
+                        } catch (e: Exception) { null }
+                        val reason = errorBody?.error?.message ?: body?.error?.message ?: "HTTP ${response.code()}"
+                        appendChatError("Errore Gemini: $reason")
+                        return@launch
+                    }
+
+                    val content = body?.candidates?.firstOrNull()?.content
+                    if (content == null) {
+                        appendChatError("Errore Gemini: risposta vuota (${body?.error?.message ?: "nessun candidato"})")
+                        return@launch
+                    }
+
+                    val functionCalls = content.parts.mapNotNull { it.functionCall }
+                    val textParts = content.parts.mapNotNull { it.text }.joinToString("")
+
+                    if (functionCalls.isEmpty()) {
+                        finalText = textParts
+                        break
+                    }
+
+                    // Execute the requested highlights, then send the results back
+                    contents += com.example.zoterohelpernative.data.GeminiContent(role = "model", parts = content.parts)
+                    val responseParts = functionCalls.map { call ->
+                        val result = if (call.name == "create_highlight") {
+                            executeCreateHighlight(call.args).also {
+                                if (it["success"] == true) highlightsCreated++
+                            }
+                        } else {
+                            mapOf("success" to false, "error" to "Funzione sconosciuta: ${call.name}")
+                        }
+                        com.example.zoterohelpernative.data.GeminiPart(
+                            functionResponse = com.example.zoterohelpernative.data.GeminiFunctionResponse(
+                                name = call.name ?: "create_highlight",
+                                response = result
+                            )
+                        )
+                    }
+                    contents += com.example.zoterohelpernative.data.GeminiContent(role = "user", parts = responseParts)
+                }
+
+                val answer = finalText?.takeIf { it.isNotBlank() }
+                    ?: if (highlightsCreated > 0) {
+                        "Ho creato $highlightsCreated evidenziazion${if (highlightsCreated == 1) "e" else "i"} nel documento."
+                    } else null
+
+                if (answer != null) {
                     _state.update {
                         it.copy(chatMessages = it.chatMessages + ChatMessage("model", answer.trim()))
                     }
                 } else {
-                    val errorBody = try {
-                        response.errorBody()?.string()?.let { raw ->
-                            com.google.gson.Gson().fromJson(raw, com.example.zoterohelpernative.data.GeminiResponse::class.java)
-                        }
-                    } catch (e: Exception) { null }
-                    val reason = errorBody?.error?.message
-                        ?: body?.error?.message
-                        ?: "HTTP ${response.code()}"
-                    appendChatError("Errore Gemini: $reason")
+                    appendChatError("Errore Gemini: nessuna risposta ricevuta.")
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -840,6 +1007,7 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
     fun loadDocument(itemKey: String, cacheDir: File) {
         viewModelScope.launch {
             documentTextCache = null
+            currentAttachmentKey = itemKey
             _state.update {
                 it.copy(
                     isLoadingPdf = true,
@@ -905,7 +1073,10 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
 
                 // 4. Load into MuPDF
                 if (pdfEngine.loadDocument(pdfFile)) {
-                    _state.update { it.copy(numPages = pdfEngine.pageCount, currentPage = 0, isLoadingPdf = false) }
+                    // Resume from the last read page, if any
+                    val savedPage = settingsRepository.lastPageMap.firstOrNull()?.get(attachmentKey) ?: 0
+                    val startPage = savedPage.coerceIn(0, (pdfEngine.pageCount - 1).coerceAtLeast(0))
+                    _state.update { it.copy(numPages = pdfEngine.pageCount, currentPage = startPage, isLoadingPdf = false) }
                     renderCurrentPage()
                 } else {
                     _state.update { it.copy(isLoadingPdf = false, pdfError = "Impossibile aprire il PDF.") }

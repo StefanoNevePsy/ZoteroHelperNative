@@ -30,6 +30,7 @@ class SettingsRepository(private val context: Context) {
         val PDF_THEME = stringPreferencesKey("pdf_theme")
         val TOOL_ICONS = stringPreferencesKey("tool_icons")
         val LAST_OPENED_MAP = stringPreferencesKey("last_opened_map")
+        val LAST_PAGE_MAP = stringPreferencesKey("last_page_map")
     }
 
     private val gson = Gson()
@@ -103,6 +104,37 @@ class SettingsRepository(private val context: Context) {
                 .entries.sortedByDescending { it.value }.take(500)
                 .associate { it.key to it.value }
             preferences[LAST_OPENED_MAP] = gson.toJson(updated)
+        }
+    }
+
+    // attachmentKey -> last read page (0-based), to resume reading where you left off
+    val lastPageMap: Flow<Map<String, Int>> = context.dataStore.data.map { prefs ->
+        val json = prefs[LAST_PAGE_MAP]
+        if (json.isNullOrEmpty()) {
+            emptyMap()
+        } else {
+            try {
+                val type = object : TypeToken<Map<String, Int>>() {}.type
+                gson.fromJson(json, type)
+            } catch (e: Exception) {
+                emptyMap()
+            }
+        }
+    }
+
+    suspend fun saveLastReadPage(attachmentKey: String, page: Int) {
+        context.dataStore.edit { preferences ->
+            val current: Map<String, Int> = try {
+                val json = preferences[LAST_PAGE_MAP]
+                if (json.isNullOrEmpty()) emptyMap()
+                else gson.fromJson(json, object : TypeToken<Map<String, Int>>() {}.type)
+            } catch (e: Exception) {
+                emptyMap()
+            }
+            val updated = (current + (attachmentKey to page)).entries
+                .toList().takeLast(500)
+                .associate { it.key to it.value }
+            preferences[LAST_PAGE_MAP] = gson.toJson(updated)
         }
     }
 
