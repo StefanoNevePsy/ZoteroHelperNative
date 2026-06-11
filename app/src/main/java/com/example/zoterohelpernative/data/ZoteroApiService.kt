@@ -46,7 +46,8 @@ interface ZoteroApiService {
         @Path("userId") userId: String,
         @Header("Zotero-API-Key") apiKey: String,
         @Header("Zotero-API-Version") apiVersion: String = "3",
-        @Query("limit") limit: Int = 1000
+        @Query("limit") limit: Int = 100,
+        @Query("start") start: Int = 0
     ): Response<List<ZoteroTag>>
 
     @POST("users/{userId}/items")

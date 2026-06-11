@@ -1,5 +1,6 @@
 package com.example.zoterohelpernative.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,7 +12,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -182,13 +183,61 @@ fun ItemDetailsPanel(
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(8.dp))
+
+                // Type to filter existing tags, or create a brand-new one
+                var newTagText by remember(item.key) { mutableStateOf("") }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = newTagText,
+                        onValueChange = { newTagText = it },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+                        placeholder = { Text("Cerca o crea tag…", color = Color(0x80FFFFFF)) },
+                        shape = MaterialTheme.shapes.medium,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            cursorColor = Color(0xFF34D399),
+                            focusedBorderColor = Color(0x8034D399),
+                            unfocusedBorderColor = Color(0x33FFFFFF)
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    val currentTagsForAdd = item.data.tags?.map { it.tag } ?: emptyList()
+                    val canCreateTag = newTagText.isNotBlank() && newTagText.trim() !in currentTagsForAdd
+                    IconButton(
+                        onClick = {
+                            onToggleTag(newTagText.trim())
+                            newTagText = ""
+                        },
+                        enabled = canCreateTag,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(
+                                if (canCreateTag) Color(0xFF34D399) else Color(0x33FFFFFF),
+                                MaterialTheme.shapes.medium
+                            )
+                    ) {
+                        Icon(
+                            Icons.Outlined.Add,
+                            contentDescription = "Crea tag",
+                            tint = if (canCreateTag) Color.Black else Color(0x80FFFFFF)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+
                 @OptIn(ExperimentalLayoutApi::class)
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     val currentTags = item.data.tags?.map { it.tag } ?: emptyList()
-                    allLibraryTags.filter { it !in currentTags }.forEach { tagStr ->
+                    allLibraryTags
+                        .filter { it !in currentTags }
+                        .filter { newTagText.isBlank() || it.contains(newTagText.trim(), ignoreCase = true) }
+                        .forEach { tagStr ->
                         val tagColor = getTagColor(tagStr)
                         Surface(
                             color = tagColor.copy(alpha = 0.2f),
@@ -206,6 +255,83 @@ fun ItemDetailsPanel(
                     }
                 }
                 Spacer(modifier = Modifier.height(24.dp))
+
+                // Child Notes
+                val notes = children.filter { it.data.itemType == "note" && !it.data.note.isNullOrBlank() }
+                if (notes.isNotEmpty()) {
+                    Divider(color = Color(0x1AFFFFFF))
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Text(
+                        text = "Note (${notes.size})",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    notes.forEach { noteItem ->
+                        // Zotero notes are HTML: render them as plain text
+                        val plainText = remember(noteItem.key, noteItem.data.note) {
+                            android.text.Html.fromHtml(noteItem.data.note ?: "", android.text.Html.FROM_HTML_MODE_COMPACT)
+                                .toString().trim()
+                        }
+                        var expanded by remember(noteItem.key) { mutableStateOf(false) }
+                        GlassSurface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { expanded = !expanded }
+                                .padding(vertical = 4.dp),
+                            color = Color(0x26FCD34D),
+                            borderColor = Color(0x4DFCD34D),
+                            shape = MaterialTheme.shapes.medium,
+                            blurRadius = 8.dp
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Outlined.Description,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFCD34D),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = plainText.lineSequence().firstOrNull { it.isNotBlank() } ?: "Nota",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Medium,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = if (expanded) Int.MAX_VALUE else 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Icon(
+                                        if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                                        contentDescription = if (expanded) "Comprimi" else "Espandi",
+                                        tint = Color(0xB3FFFFFF),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                if (expanded) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = plainText,
+                                        color = Color(0xD9FFFFFF),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                } else if (plainText.lines().size > 1) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = plainText,
+                                        color = Color(0x99FFFFFF),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 2,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
 
                 Divider(color = Color(0x1AFFFFFF))
                 Spacer(modifier = Modifier.height(24.dp))

@@ -239,7 +239,7 @@ fun ReaderScreen(
                     val popupPos = state.annotationPopupPosition
                     
                     val popupWidthDp = 260.dp
-                    val popupHeightDp = 350.dp
+                    val popupHeightDp = 420.dp
                     
                     val popupWidthPx = with(density) { popupWidthDp.toPx() }
                     val popupHeightPx = with(density) { popupHeightDp.toPx() }
@@ -304,12 +304,56 @@ fun ReaderScreen(
                                         )
                                     }
                                 }
+                                // New tag input: type to filter the lists below, or create a new tag
+                                Spacer(modifier = Modifier.height(16.dp))
+                                var tagQuery by remember(ann.key) { mutableStateOf("") }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    androidx.compose.material3.OutlinedTextField(
+                                        value = tagQuery,
+                                        onValueChange = { tagQuery = it },
+                                        modifier = Modifier.weight(1f),
+                                        singleLine = true,
+                                        textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.White),
+                                        placeholder = { androidx.compose.material3.Text("Cerca o crea tag…", color = Color(0x80FFFFFF), fontSize = 12.sp) },
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                            focusedTextColor = Color.White,
+                                            unfocusedTextColor = Color.White,
+                                            cursorColor = Color(0xFF60A5FA),
+                                            focusedBorderColor = Color(0x8060A5FA),
+                                            unfocusedBorderColor = Color(0x33FFFFFF)
+                                        )
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    val currentTagsNow = ann.tags?.map { it.tag } ?: emptyList()
+                                    val canCreate = tagQuery.isNotBlank() && tagQuery.trim() !in currentTagsNow
+                                    IconButton(
+                                        onClick = {
+                                            viewModel.toggleAnnotationTag(ann.key, com.example.zoterohelpernative.data.ZoteroTag(tagQuery.trim(), 0))
+                                            tagQuery = ""
+                                        },
+                                        enabled = canCreate,
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .background(if (canCreate) Color(0xFF34D399) else Color(0x33FFFFFF), CircleShape)
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.Add,
+                                            contentDescription = "Aggiungi tag",
+                                            tint = if (canCreate) Color.Black else Color(0x80FFFFFF)
+                                        )
+                                    }
+                                }
+
                                 // Tags Grid
                                 Spacer(modifier = Modifier.height(16.dp))
                                 androidx.compose.material3.Text("TAGS CORRENTI", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
-                                
+
+                                val tagFilter = tagQuery.trim()
                                 val recentTagsList = viewModel.getRecentTags()
+                                    .filter { tagFilter.isBlank() || it.contains(tagFilter, ignoreCase = true) }
                                 val allLibraryTags = viewModel.getAllTags()
+                                    .filter { tagFilter.isBlank() || it.contains(tagFilter, ignoreCase = true) }
                                 
                                 Column(
                                     modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp).verticalScroll(rememberScrollState())
@@ -328,7 +372,7 @@ fun ReaderScreen(
                                             Surface(
                                                 color = tagColor,
                                                 shape = MaterialTheme.shapes.small,
-                                                modifier = Modifier.clickable { viewModel.toggleAnnotationTag(ann.key, com.example.zoterohelpernative.data.ZoteroTag(tagStr, 1)) }
+                                                modifier = Modifier.clickable { viewModel.toggleAnnotationTag(ann.key, com.example.zoterohelpernative.data.ZoteroTag(tagStr, 0)) }
                                             ) {
                                                 androidx.compose.material3.Text(
                                                     text = tagStr,
@@ -360,7 +404,7 @@ fun ReaderScreen(
                                             Surface(
                                                 color = tagColor,
                                                 shape = MaterialTheme.shapes.small,
-                                                modifier = Modifier.clickable { viewModel.toggleAnnotationTag(ann.key, com.example.zoterohelpernative.data.ZoteroTag(tagStr, 1)) }
+                                                modifier = Modifier.clickable { viewModel.toggleAnnotationTag(ann.key, com.example.zoterohelpernative.data.ZoteroTag(tagStr, 0)) }
                                             ) {
                                                 androidx.compose.material3.Text(
                                                     text = tagStr,
@@ -396,7 +440,7 @@ fun ReaderScreen(
                                             Surface(
                                                 color = tagColor.copy(alpha = 0.2f),
                                                 shape = MaterialTheme.shapes.small,
-                                                modifier = Modifier.clickable { viewModel.toggleAnnotationTag(ann.key, com.example.zoterohelpernative.data.ZoteroTag(tagStr, 1)) },
+                                                modifier = Modifier.clickable { viewModel.toggleAnnotationTag(ann.key, com.example.zoterohelpernative.data.ZoteroTag(tagStr, 0)) },
                                                 border = androidx.compose.foundation.BorderStroke(1.dp, tagColor.copy(alpha = 0.5f))
                                             ) {
                                                 androidx.compose.material3.Text(
@@ -423,6 +467,11 @@ fun ReaderScreen(
             annotations = state.annotations,
             getUiColor = { viewModel.getUiColor(it) },
             onDeleteAnnotation = { viewModel.deleteAnnotation(it) },
+            chatMessages = state.chatMessages,
+            isChatSending = state.isChatSending,
+            geminiKeySet = state.geminiKeySet,
+            onSendChatMessage = { viewModel.sendChatMessage(it) },
+            onClearChat = { viewModel.clearChat() },
             modifier = Modifier.fillMaxHeight().align(Alignment.CenterEnd)
         )
 

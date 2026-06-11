@@ -23,6 +23,7 @@ data class SettingsState(
     val webdavUrl: String = "",
     val webdavUser: String = "",
     val webdavPass: String = "",
+    val geminiApiKey: String = "",
     val customPalettes: Map<String, Palette> = emptyMap(),
     val penHighlightOnly: Boolean = false,
     val fingerSelectionOnly: Boolean = false,
@@ -48,6 +49,7 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
                     webdavUrl = repository.webdavUrl.firstOrNull() ?: "",
                     webdavUser = repository.webdavUser.firstOrNull() ?: "",
                     webdavPass = repository.webdavPass.firstOrNull() ?: "",
+                    geminiApiKey = repository.geminiApiKey.firstOrNull() ?: "",
                     isLoading = false
                 )
             }
@@ -79,11 +81,13 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
     fun updateWebdavUrl(value: String) { _state.update { it.copy(webdavUrl = value) } }
     fun updateWebdavUser(value: String) { _state.update { it.copy(webdavUser = value) } }
     fun updateWebdavPass(value: String) { _state.update { it.copy(webdavPass = value) } }
+    fun updateGeminiApiKey(value: String) { _state.update { it.copy(geminiApiKey = value) } }
 
     fun saveSettings(onComplete: () -> Unit) {
         viewModelScope.launch {
             repository.saveZoteroCredentials(state.value.zoteroApiKey, state.value.zoteroUserId)
             repository.saveWebDavCredentials(state.value.webdavUrl, state.value.webdavUser, state.value.webdavPass)
+            repository.saveGeminiApiKey(state.value.geminiApiKey)
             repository.savePenHighlightOnly(state.value.penHighlightOnly)
             repository.saveFingerSelectionOnly(state.value.fingerSelectionOnly)
             repository.saveToolIcons(state.value.toolIcons)

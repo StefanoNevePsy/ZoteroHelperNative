@@ -29,7 +29,8 @@ import androidx.compose.ui.graphics.Color
 enum class SidebarTab(val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     TOC("Index", Icons.AutoMirrored.Outlined.List),
     SEARCH("Search", Icons.Outlined.Search),
-    ANNOTATIONS("Annotations", Icons.Outlined.Star)
+    ANNOTATIONS("Annotations", Icons.Outlined.Star),
+    CHAT("Chat AI", Icons.Outlined.AutoAwesome)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -40,6 +41,11 @@ fun ReaderSidebar(
     annotations: List<ItemData>,
     getUiColor: (String) -> Color,
     onDeleteAnnotation: (ItemData) -> Unit,
+    chatMessages: List<com.example.zoterohelpernative.ui.ChatMessage> = emptyList(),
+    isChatSending: Boolean = false,
+    geminiKeySet: Boolean = false,
+    onSendChatMessage: (String) -> Unit = {},
+    onClearChat: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedTab by remember { mutableStateOf(SidebarTab.ANNOTATIONS) }
@@ -74,12 +80,23 @@ fun ReaderSidebar(
                         style = MaterialTheme.typography.titleLarge,
                         color = Color.White
                     )
-                    IconButton(onClick = onClose) {
-                        Icon(
-                            imageVector = Icons.Outlined.Close,
-                            contentDescription = "Close Sidebar",
-                            tint = Color.White.copy(alpha = 0.7f)
-                        )
+                    Row {
+                        if (selectedTab == SidebarTab.CHAT && chatMessages.isNotEmpty()) {
+                            IconButton(onClick = onClearChat) {
+                                Icon(
+                                    imageVector = Icons.Outlined.DeleteSweep,
+                                    contentDescription = "Svuota chat",
+                                    tint = Color.White.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                        IconButton(onClick = onClose) {
+                            Icon(
+                                imageVector = Icons.Outlined.Close,
+                                contentDescription = "Close Sidebar",
+                                tint = Color.White.copy(alpha = 0.7f)
+                            )
+                        }
                     }
                 }
 
@@ -131,6 +148,14 @@ fun ReaderSidebar(
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text("Cerca nel PDF", color = Color.White.copy(alpha = 0.5f))
                             }
+                        }
+                        SidebarTab.CHAT -> {
+                            ChatPanel(
+                                messages = chatMessages,
+                                isSending = isChatSending,
+                                geminiKeySet = geminiKeySet,
+                                onSendMessage = onSendChatMessage
+                            )
                         }
                         SidebarTab.ANNOTATIONS -> {
                             if (annotations.none { it.annotationType == "highlight" || it.annotationType == "underline" }) {
@@ -234,6 +259,160 @@ fun ReaderSidebar(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatPanel(
+    messages: List<com.example.zoterohelpernative.ui.ChatMessage>,
+    isSending: Boolean,
+    geminiKeySet: Boolean,
+    onSendMessage: (String) -> Unit
+) {
+    var inputText by remember { mutableStateOf("") }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+
+    LaunchedEffect(messages.size, isSending) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (!geminiKeySet) {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                Text(
+                    text = "Per chattare con l'AI sul documento, inserisci la tua API key di Gemini nelle Impostazioni.",
+                    color = Color.White.copy(alpha = 0.6f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+        } else if (messages.isEmpty()) {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Outlined.AutoAwesome,
+                        contentDescription = null,
+                        tint = Color(0xFF60A5FA),
+                        modifier = Modifier.size(40.dp)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Fai una domanda sul documento: riassunti, spiegazioni, metodologia…",
+                        color = Color.White.copy(alpha = 0.6f),
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(messages.size) { index ->
+                    val message = messages[index]
+                    val isUser = message.role == "user"
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .widthIn(max = 240.dp)
+                                .background(
+                                    color = when {
+                                        message.isError -> Color(0x4DEF4444)
+                                        isUser -> Color(0x4D60A5FA)
+                                        else -> Color(0x26FFFFFF)
+                                    },
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(
+                                        topStart = 12.dp,
+                                        topEnd = 12.dp,
+                                        bottomStart = if (isUser) 12.dp else 2.dp,
+                                        bottomEnd = if (isUser) 2.dp else 12.dp
+                                    )
+                                )
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = message.text,
+                                color = if (message.isError) Color(0xFFFCA5A5) else Color.White.copy(alpha = 0.95f),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                }
+                if (isSending) {
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(4.dp),
+                            horizontalArrangement = Arrangement.Start,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = Color(0xFF60A5FA)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Sto leggendo il documento…", color = Color.White.copy(alpha = 0.5f), style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Input row
+        if (geminiKeySet) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                OutlinedTextField(
+                    value = inputText,
+                    onValueChange = { inputText = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Chiedi qualcosa…", color = Color(0x80FFFFFF)) },
+                    maxLines = 4,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        cursorColor = Color(0xFF60A5FA),
+                        focusedBorderColor = Color(0x8060A5FA),
+                        unfocusedBorderColor = Color(0x33FFFFFF)
+                    )
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                IconButton(
+                    onClick = {
+                        if (inputText.isNotBlank() && !isSending) {
+                            onSendMessage(inputText)
+                            inputText = ""
+                        }
+                    },
+                    enabled = inputText.isNotBlank() && !isSending,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(
+                            if (inputText.isNotBlank() && !isSending) Color(0xFF60A5FA) else Color(0x33FFFFFF),
+                            androidx.compose.foundation.shape.CircleShape
+                        )
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.Send,
+                        contentDescription = "Invia",
+                        tint = if (inputText.isNotBlank() && !isSending) Color.Black else Color.White.copy(alpha = 0.5f)
+                    )
                 }
             }
         }

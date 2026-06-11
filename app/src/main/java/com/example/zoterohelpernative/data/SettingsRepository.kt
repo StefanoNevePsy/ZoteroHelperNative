@@ -29,6 +29,7 @@ class SettingsRepository(private val context: Context) {
         val FINGER_SELECTION_ONLY = androidx.datastore.preferences.core.booleanPreferencesKey("finger_selection_only")
         val PDF_THEME = stringPreferencesKey("pdf_theme")
         val TOOL_ICONS = stringPreferencesKey("tool_icons")
+        val LAST_OPENED_MAP = stringPreferencesKey("last_opened_map")
     }
 
     private val gson = Gson()
@@ -70,6 +71,38 @@ class SettingsRepository(private val context: Context) {
             } catch (e: Exception) {
                 emptyMap()
             }
+        }
+    }
+
+    // itemKey (parent item) -> epoch millis of the last time a PDF of that item was opened
+    val lastOpenedMap: Flow<Map<String, Long>> = context.dataStore.data.map { prefs ->
+        val json = prefs[LAST_OPENED_MAP]
+        if (json.isNullOrEmpty()) {
+            emptyMap()
+        } else {
+            try {
+                val type = object : TypeToken<Map<String, Long>>() {}.type
+                gson.fromJson(json, type)
+            } catch (e: Exception) {
+                emptyMap()
+            }
+        }
+    }
+
+    suspend fun recordItemOpened(itemKey: String) {
+        context.dataStore.edit { preferences ->
+            val current: Map<String, Long> = try {
+                val json = preferences[LAST_OPENED_MAP]
+                if (json.isNullOrEmpty()) emptyMap()
+                else gson.fromJson(json, object : TypeToken<Map<String, Long>>() {}.type)
+            } catch (e: Exception) {
+                emptyMap()
+            }
+            val updated = (current + (itemKey to System.currentTimeMillis()))
+                // Keep the map bounded: drop the oldest entries past 500
+                .entries.sortedByDescending { it.value }.take(500)
+                .associate { it.key to it.value }
+            preferences[LAST_OPENED_MAP] = gson.toJson(updated)
         }
     }
 

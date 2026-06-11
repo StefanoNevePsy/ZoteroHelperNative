@@ -124,6 +124,43 @@ class PdfEngine {
         }
     }
 
+    /**
+     * Extracts the plain text of the whole document (used as context for the AI chat).
+     * Stops once [maxChars] is reached to keep request payloads bounded.
+     */
+    suspend fun extractAllText(maxChars: Int = 120_000): String = withContext(Dispatchers.IO) {
+        val doc = document ?: return@withContext ""
+        val sb = StringBuilder()
+
+        for (pageIndex in 0 until pageCount) {
+            if (sb.length >= maxChars) break
+            var page: Page? = null
+            try {
+                page = doc.loadPage(pageIndex)
+                val structuredText = page.toStructuredText("preserve-whitespace") ?: continue
+                sb.append("\n\n[Pagina ${pageIndex + 1}]\n")
+                for (block in structuredText.blocks) {
+                    for (line in block.lines) {
+                        var lastRight = -1f
+                        for (char in line.chars) {
+                            val q = char.quad.toRect()
+                            if (lastRight != -1f && q.x0 - lastRight > 2.0f) sb.append(' ')
+                            sb.append(char.c.toChar())
+                            lastRight = q.x1
+                        }
+                        sb.append('\n')
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                page?.destroy()
+            }
+        }
+
+        return@withContext if (sb.length > maxChars) sb.substring(0, maxChars) else sb.toString()
+    }
+
     fun close() {
         document?.destroy()
         document = null

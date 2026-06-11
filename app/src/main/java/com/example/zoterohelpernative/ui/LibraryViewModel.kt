@@ -23,7 +23,8 @@ enum class LibrarySortOption(val label: String) {
     TITLE("Titolo"),
     YEAR("Anno"),
     AUTHOR("Autore"),
-    ITEM_TYPE("Tipo")
+    ITEM_TYPE("Tipo"),
+    LAST_OPENED("Ultima apertura")
 }
 
 data class LibraryState(
@@ -36,7 +37,8 @@ data class LibraryState(
     val searchQuery: String = "",
     val sortOption: LibrarySortOption = LibrarySortOption.TITLE,
     val sortAscending: Boolean = true,
-    val filterTag: String? = null
+    val filterTag: String? = null,
+    val lastOpened: Map<String, Long> = emptyMap()
 )
 
 val LibraryState.allTags: List<String>
@@ -83,6 +85,7 @@ val LibraryState.filteredItems: List<ZoteroItem>
             LibrarySortOption.YEAR -> compareBy { it.data.year ?: Int.MAX_VALUE }
             LibrarySortOption.AUTHOR -> compareBy { it.data.authorSummary?.lowercase() ?: "\uFFFF" }
             LibrarySortOption.ITEM_TYPE -> compareBy { it.data.itemType }
+            LibrarySortOption.LAST_OPENED -> compareBy { lastOpened[it.key] ?: 0L }
         }
         val sorted = list.sortedWith(comparator)
         return if (sortAscending) sorted else sorted.reversed()
@@ -113,6 +116,12 @@ class LibraryViewModel(
         viewModelScope.launch {
             zoteroRepository.collectionsFlow.collect { collections ->
                 _state.update { it.copy(collections = collections) }
+            }
+        }
+
+        viewModelScope.launch {
+            settingsRepository.lastOpenedMap.collect { map ->
+                _state.update { it.copy(lastOpened = map) }
             }
         }
         
@@ -162,7 +171,18 @@ class LibraryViewModel(
                 // Selecting the active criterion again flips the direction
                 it.copy(sortAscending = !it.sortAscending)
             } else {
-                it.copy(sortOption = option, sortAscending = true)
+                // "Last opened" is most useful newest-first
+                it.copy(sortOption = option, sortAscending = option != LibrarySortOption.LAST_OPENED)
+            }
+        }
+    }
+
+    fun recordItemOpened(itemKey: String) {
+        viewModelScope.launch {
+            try {
+                settingsRepository.recordItemOpened(itemKey)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }

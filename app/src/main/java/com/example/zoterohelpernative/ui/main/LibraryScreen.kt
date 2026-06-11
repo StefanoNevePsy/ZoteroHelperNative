@@ -213,7 +213,10 @@ fun LibraryScreen(
                             children = state.getChildrenForItem(item.key),
                             allLibraryTags = state.allTags,
                             onClose = { viewModel.setActiveItem(null) },
-                            onOpenPdf = onNavigateToReader,
+                            onOpenPdf = { attachmentKey ->
+                                viewModel.recordItemOpened(item.key)
+                                onNavigateToReader(attachmentKey)
+                            },
                             onToggleTag = { viewModel.toggleTagOnActiveItem(it) },
                             modifier = Modifier.width(360.dp)
                         )

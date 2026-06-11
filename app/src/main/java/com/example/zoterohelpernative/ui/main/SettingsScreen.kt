@@ -158,6 +158,30 @@ fun SettingsScreen(
                         }
                     }
 
+                    // AI Section
+                    GlassSurface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0x1A000000)
+                    ) {
+                        Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Text("AI (Gemini)", style = MaterialTheme.typography.titleMedium, color = Color(0xFFC084FC), fontWeight = FontWeight.Bold)
+                            Text(
+                                "Abilita la chat AI sui documenti nel lettore. Ottieni una API key gratuita da Google AI Studio (aistudio.google.com).",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xB3FFFFFF)
+                            )
+                            OutlinedTextField(
+                                value = state.geminiApiKey,
+                                onValueChange = viewModel::updateGeminiApiKey,
+                                label = { Text("Gemini API Key") },
+                                singleLine = true,
+                                visualTransformation = PasswordVisualTransformation(),
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = textFieldColors
+                            )
+                        }
+                    }
+
                     // Palettes Section
                     GlassSurface(
                         modifier = Modifier.fillMaxWidth(),

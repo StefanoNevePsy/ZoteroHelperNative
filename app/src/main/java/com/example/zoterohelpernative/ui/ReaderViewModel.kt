@@ -31,6 +31,12 @@ import androidx.compose.material.icons.Icons
 enum class ActiveTool { HIGHLIGHTER, PEN, ERASER, SHAPE }
 enum class ShapeType { RECTANGLE, ELLIPSE, POLYGON }
 
+data class ChatMessage(
+    val role: String, // "user" or "model"
+    val text: String,
+    val isError: Boolean = false
+)
+
 data class ReaderState(
     val activeTool: ActiveTool = ActiveTool.HIGHLIGHTER,
     val activeColorHex: String = "#ffd400", // Zotero Hex
@@ -71,7 +77,12 @@ data class ReaderState(
     val isLoadingPdf: Boolean = false,
     val pdfError: String? = null,
     val pdfTheme: String = "light",
-    val syncError: String? = null
+    val syncError: String? = null,
+
+    // AI Chat
+    val chatMessages: List<ChatMessage> = emptyList(),
+    val isChatSending: Boolean = false,
+    val geminiKeySet: Boolean = false
 )
 
 class ReaderViewModel(private val settingsRepository: SettingsRepository) : ViewModel() {
@@ -115,6 +126,11 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
         viewModelScope.launch {
             settingsRepository.toolIcons.collect { icons ->
                 _state.update { it.copy(toolIcons = icons) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.geminiApiKey.collect { key ->
+                _state.update { it.copy(geminiKeySet = !key.isNullOrBlank()) }
             }
         }
     }
@@ -323,8 +339,12 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
             pushUndoState()
             val updated = ann.copy(tags = currentTags)
             currentAnnotations[index] = updated
-            _state.value = _state.value.copy(annotations = currentAnnotations)
-            
+            _state.value = _state.value.copy(
+                annotations = currentAnnotations,
+                // A brand-new tag becomes immediately available for other annotations
+                allLibraryTags = (_state.value.allLibraryTags + tag.tag).distinct()
+            )
+
             // Sync
             syncItemToZotero(updated)
         }
@@ -717,14 +737,116 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
 
     private val pdfEngine = com.example.zoterohelpernative.pdf.PdfEngine()
 
+    // ---- AI Chat (Gemini) ----
+
+    private val geminiService by lazy {
+        Retrofit.Builder()
+            .baseUrl("https://generativelanguage.googleapis.com/")
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(com.example.zoterohelpernative.data.GeminiApiService::class.java)
+    }
+
+    private var documentTextCache: String? = null
+
+    fun clearChat() {
+        _state.update { it.copy(chatMessages = emptyList()) }
+    }
+
+    fun sendChatMessage(userText: String) {
+        val text = userText.trim()
+        if (text.isEmpty() || _state.value.isChatSending) return
+
+        _state.update {
+            it.copy(
+                chatMessages = it.chatMessages + ChatMessage("user", text),
+                isChatSending = true
+            )
+        }
+
+        viewModelScope.launch {
+            try {
+                val apiKey = settingsRepository.geminiApiKey.firstOrNull()
+                if (apiKey.isNullOrBlank()) {
+                    appendChatError("Imposta la API key di Gemini nelle Impostazioni per usare la chat.")
+                    return@launch
+                }
+
+                val docText = documentTextCache ?: pdfEngine.extractAllText().also { documentTextCache = it }
+
+                val systemPrompt = buildString {
+                    append("Sei un assistente di ricerca accademica integrato in un lettore PDF. ")
+                    append("Rispondi in modo conciso e nella lingua dell'utente, basandoti sul documento fornito. ")
+                    append("Se l'informazione non è nel documento, dillo esplicitamente. ")
+                    append("Quando citi un passaggio, indica la pagina (i marcatori [Pagina N] delimitano le pagine).\n\n")
+                    if (docText.isBlank()) {
+                        append("ATTENZIONE: non è stato possibile estrarre testo dal documento (potrebbe essere una scansione).")
+                    } else {
+                        append("=== TESTO DEL DOCUMENTO ===\n")
+                        append(docText)
+                    }
+                }
+
+                val history = _state.value.chatMessages
+                    .filter { !it.isError }
+                    .map {
+                        com.example.zoterohelpernative.data.GeminiContent(
+                            role = it.role,
+                            parts = listOf(com.example.zoterohelpernative.data.GeminiPart(it.text))
+                        )
+                    }
+
+                val request = com.example.zoterohelpernative.data.GeminiRequest(
+                    contents = history,
+                    systemInstruction = com.example.zoterohelpernative.data.GeminiContent(
+                        parts = listOf(com.example.zoterohelpernative.data.GeminiPart(systemPrompt))
+                    )
+                )
+
+                val response = geminiService.generateContent("gemini-flash-latest", apiKey, request)
+                val body = response.body()
+                val answer = body?.candidates?.firstOrNull()?.content?.parts?.joinToString("") { it.text }
+
+                if (response.isSuccessful && !answer.isNullOrBlank()) {
+                    _state.update {
+                        it.copy(chatMessages = it.chatMessages + ChatMessage("model", answer.trim()))
+                    }
+                } else {
+                    val errorBody = try {
+                        response.errorBody()?.string()?.let { raw ->
+                            com.google.gson.Gson().fromJson(raw, com.example.zoterohelpernative.data.GeminiResponse::class.java)
+                        }
+                    } catch (e: Exception) { null }
+                    val reason = errorBody?.error?.message
+                        ?: body?.error?.message
+                        ?: "HTTP ${response.code()}"
+                    appendChatError("Errore Gemini: $reason")
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                appendChatError("Errore di rete: ${e.localizedMessage ?: "sconosciuto"}")
+            } finally {
+                _state.update { it.copy(isChatSending = false) }
+            }
+        }
+    }
+
+    private fun appendChatError(message: String) {
+        _state.update {
+            it.copy(chatMessages = it.chatMessages + ChatMessage("model", message, isError = true))
+        }
+    }
+
     fun loadDocument(itemKey: String, cacheDir: File) {
         viewModelScope.launch {
+            documentTextCache = null
             _state.update {
                 it.copy(
                     isLoadingPdf = true,
                     pdfError = null,
                     annotations = emptyList(),
-                    selectedAnnotationId = null
+                    selectedAnnotationId = null,
+                    chatMessages = emptyList()
                 )
             }
             try {
@@ -774,11 +896,8 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
                     }
                     _state.update { it.copy(annotations = remoteAnnotations) }
 
-                    val tagsResponse = apiService.getTags(userId, apiKey)
-                    if (tagsResponse.isSuccessful) {
-                        val tags = tagsResponse.body()?.map { it.tag } ?: emptyList()
-                        _state.update { it.copy(allLibraryTags = tags) }
-                    }
+                    // Library tags load in parallel: they must not delay the PDF
+                    refreshLibraryTags(userId, apiKey)
                 } catch (e: Exception) {
                     e.printStackTrace()
                     // Don't fail the whole PDF load just because annotations failed
@@ -795,6 +914,33 @@ class ReaderViewModel(private val settingsRepository: SettingsRepository) : View
             } catch (e: Exception) {
                 e.printStackTrace()
                 _state.update { it.copy(isLoadingPdf = false, pdfError = e.localizedMessage) }
+            }
+        }
+    }
+
+    private fun refreshLibraryTags(userId: String, apiKey: String) {
+        viewModelScope.launch {
+            try {
+                // The tags endpoint caps each page at 100 entries regardless of
+                // the requested limit, so everything past the first page was lost.
+                val tags = mutableListOf<String>()
+                var start = 0
+                while (true) {
+                    val response = apiService.getTags(userId, apiKey, start = start)
+                    if (!response.isSuccessful) break
+                    val page = response.body() ?: emptyList()
+                    tags += page.map { it.tag }
+                    if (page.size < 100 || start >= 5000) break
+                    start += 100
+                }
+                if (tags.isNotEmpty()) {
+                    _state.update { s ->
+                        // Keep tags added locally in the meantime
+                        s.copy(allLibraryTags = (tags + s.allLibraryTags).distinct())
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }

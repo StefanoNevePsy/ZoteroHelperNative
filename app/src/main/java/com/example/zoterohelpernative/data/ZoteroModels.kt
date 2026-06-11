@@ -48,6 +48,8 @@ data class ItemData(
     val tags: List<ZoteroTag>? = null,
     val collections: List<String>? = null,
     val creators: List<ZoteroCreator>? = null,
+    // For notes (child notes contain HTML)
+    val note: String? = null,
     // For attachments
     val contentType: String? = null,
     val filename: String? = null,
