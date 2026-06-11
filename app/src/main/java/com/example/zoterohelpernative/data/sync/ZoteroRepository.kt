@@ -59,29 +59,110 @@ class ZoteroRepository(
         database.zoteroDao().clearCollections()
     }
 
+    // ---- Local annotation cache / offline queue ----
+
+    suspend fun saveLocalAnnotation(itemData: ItemData, dirty: Boolean, deleted: Boolean = false) = withContext(Dispatchers.IO) {
+        database.zoteroDao().insertItem(
+            ZoteroItemEntity(
+                key = itemData.key,
+                version = itemData.version,
+                itemType = itemData.itemType,
+                parentItem = itemData.parentItem,
+                jsonData = gson.toJson(itemData),
+                isDirty = dirty,
+                isDeleted = deleted
+            )
+        )
+    }
+
+    suspend fun saveLocalAnnotations(items: List<ItemData>, dirty: Boolean) = withContext(Dispatchers.IO) {
+        database.zoteroDao().insertItems(items.map {
+            ZoteroItemEntity(
+                key = it.key,
+                version = it.version,
+                itemType = it.itemType,
+                parentItem = it.parentItem,
+                jsonData = gson.toJson(it),
+                isDirty = dirty,
+                isDeleted = false
+            )
+        })
+    }
+
+    suspend fun getCachedAnnotations(parentKey: String): List<ItemData> = withContext(Dispatchers.IO) {
+        database.zoteroDao().getAnnotationsForParent(parentKey).mapNotNull { entity ->
+            try {
+                gson.fromJson(entity.jsonData, ItemData::class.java)
+            } catch (e: Exception) { null }
+        }
+    }
+
+    suspend fun getPendingAnnotations(parentKey: String): List<ItemData> = withContext(Dispatchers.IO) {
+        database.zoteroDao().getAnnotationsForParent(parentKey)
+            .filter { it.isDirty }
+            .mapNotNull { entity ->
+                try {
+                    gson.fromJson(entity.jsonData, ItemData::class.java)
+                } catch (e: Exception) { null }
+            }
+    }
+
+    suspend fun removeLocalItem(key: String) = withContext(Dispatchers.IO) {
+        database.zoteroDao().deleteItem(key)
+    }
+
+    suspend fun markDeletedLocally(itemData: ItemData) = withContext(Dispatchers.IO) {
+        saveLocalAnnotation(itemData, dirty = true, deleted = true)
+    }
+
     suspend fun sync() = withContext(Dispatchers.IO) {
         val apiKey = settingsRepository.zoteroApiKey.firstOrNull()
         val userId = settingsRepository.zoteroUserId.firstOrNull()
         if (apiKey.isNullOrEmpty() || userId.isNullOrEmpty()) return@withContext
 
         try {
-            // 1. Push local dirty items
+            // 1. Push local dirty items (offline queue: creations, edits, deletions)
             val dirtyItems = database.zoteroDao().getDirtyItems()
             for (localItem in dirtyItems) {
                 try {
                     val itemData = gson.fromJson(localItem.jsonData, ItemData::class.java)
-                    // We must fetch the latest version from server to resolve conflicts
+
+                    if (localItem.isDeleted) {
+                        val res = apiService.deleteItem(userId, localItem.key, apiKey, version = localItem.version)
+                        if (res.isSuccessful || res.code() == 404) {
+                            database.zoteroDao().deleteItem(localItem.key)
+                        }
+                        continue
+                    }
+
+                    if (localItem.version == 0L) {
+                        // Never reached the server: create it
+                        val res = apiService.createItems(userId, apiKey, items = listOf(itemData))
+                        val created = res.body()?.successful?.values?.firstOrNull()
+                        if (res.isSuccessful && created != null) {
+                            database.zoteroDao().insertItem(
+                                localItem.copy(
+                                    version = created.version,
+                                    jsonData = gson.toJson(itemData.copy(version = created.version)),
+                                    isDirty = false
+                                )
+                            )
+                        }
+                        continue
+                    }
+
+                    // Existing item: fetch the latest server version to resolve conflicts
                     val serverItemRes = apiService.getItems(userId, apiKey, itemKey = localItem.key)
                     if (serverItemRes.isSuccessful) {
-                        val serverItems = serverItemRes.body()
-                        val serverItem = serverItems?.firstOrNull()
-                        
+                        val serverItem = serverItemRes.body()?.firstOrNull()
+
                         var mergedData = itemData
                         if (serverItem != null && serverItem.version > localItem.version) {
                             // Conflict detected. Merge changes.
                             // We keep the server's base data but apply our local modifications
                             // Since this app mainly creates/modifies annotations, we favor our local annotation data
                             mergedData = serverItem.data.copy(
+                                version = serverItem.version,
                                 annotationText = itemData.annotationText ?: serverItem.data.annotationText,
                                 annotationComment = itemData.annotationComment ?: serverItem.data.annotationComment,
                                 annotationColor = itemData.annotationColor ?: serverItem.data.annotationColor,
@@ -89,12 +170,19 @@ class ZoteroRepository(
                                 tags = itemData.tags ?: serverItem.data.tags
                             )
                         }
-                        
+
                         // Push to server
                         val updateRes = apiService.updateItem(userId, localItem.key, apiKey, itemData = mergedData)
                         if (updateRes.isSuccessful) {
-                            // Remove dirty flag
-                            database.zoteroDao().insertItem(localItem.copy(isDirty = false))
+                            val newVersion = updateRes.headers()["Last-Modified-Version"]?.toLongOrNull()
+                                ?: mergedData.version
+                            database.zoteroDao().insertItem(
+                                localItem.copy(
+                                    version = newVersion,
+                                    jsonData = gson.toJson(mergedData.copy(version = newVersion)),
+                                    isDirty = false
+                                )
+                            )
                         }
                     }
                 } catch (e: Exception) {

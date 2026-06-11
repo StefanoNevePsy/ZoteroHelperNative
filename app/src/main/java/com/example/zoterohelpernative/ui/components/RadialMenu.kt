@@ -288,6 +288,7 @@ fun RadialMenuCapacitor(
             } else if (level == "tools") {
                 val tools = listOf(
                     Triple("HIGHLIGHTER", IconResolver.resolve(toolIcons["tool_highlighter"], Lucide.Highlighter), 225f),
+                    Triple("UNDERLINE", IconResolver.resolve(toolIcons["tool_underline"], Lucide.Underline), 90f),
                     Triple("ERASER", IconResolver.resolve(toolIcons["tool_eraser"], Lucide.Eraser), 315f),
                     Triple("SHAPE", IconResolver.resolve(toolIcons["tool_square"], Lucide.Square), 0f),
                     Triple("UNDO", IconResolver.resolve(toolIcons["tool_undo"], Lucide.Undo), 135f)

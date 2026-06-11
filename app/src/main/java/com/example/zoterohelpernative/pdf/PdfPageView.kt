@@ -139,7 +139,7 @@ fun PdfPageView(
 
                     val rectRegex = Regex("""\[\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*,\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*,\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*,\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*\]""")
                     val tapped = currentAnnotations.find { ann ->
-                        if (ann.annotationType == "highlight" && ann.annotationPosition != null) {
+                        if ((ann.annotationType == "highlight" || ann.annotationType == "underline") && ann.annotationPosition != null) {
                             val posStr = ann.annotationPosition
                             val pageIndexMatch = Regex("""\"pageIndex\"\s*:\s*(\d+)""").find(posStr)
                             val annPageIndex = pageIndexMatch?.groupValues?.get(1)?.toIntOrNull()
@@ -527,7 +527,7 @@ fun PdfPageView(
             }
 
             for (ann in annotations) {
-                if (ann.annotationType == "highlight" && ann.annotationPosition != null) {
+                if ((ann.annotationType == "highlight" || ann.annotationType == "underline") && ann.annotationPosition != null) {
                     try {
                         val uiColor = getUiColor(ann.annotationColor ?: "#ffd400")
                         
@@ -611,21 +611,33 @@ fun PdfPageView(
                             mergedRects.add(currentRect)
                         }
                         
-                        val annPath = Path()
-                        for (rect in mergedRects) {
-                            val paddedRect = rect.inflate(2f)
-                            val radius = minOf(paddedRect.height / 2f, 8f * renderScale)
-                            annPath.addRoundRect(androidx.compose.ui.geometry.RoundRect(
-                                rect = paddedRect,
-                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius)
-                            ))
+                        if (ann.annotationType == "underline") {
+                            // Solid line under each text line
+                            val thickness = (2.5f * renderScale).coerceAtLeast(2f)
+                            for (rect in mergedRects) {
+                                drawRect(
+                                    color = uiColor,
+                                    topLeft = Offset(rect.left, rect.bottom - thickness / 2f),
+                                    size = Size(rect.width, thickness)
+                                )
+                            }
+                        } else {
+                            val annPath = Path()
+                            for (rect in mergedRects) {
+                                val paddedRect = rect.inflate(2f)
+                                val radius = minOf(paddedRect.height / 2f, 8f * renderScale)
+                                annPath.addRoundRect(androidx.compose.ui.geometry.RoundRect(
+                                    rect = paddedRect,
+                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius)
+                                ))
+                            }
+
+                            drawPath(
+                                path = annPath,
+                                color = uiColor,
+                                blendMode = androidx.compose.ui.graphics.BlendMode.Multiply
+                            )
                         }
-                        
-                        drawPath(
-                            path = annPath,
-                            color = uiColor,
-                            blendMode = androidx.compose.ui.graphics.BlendMode.Multiply
-                        )
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }

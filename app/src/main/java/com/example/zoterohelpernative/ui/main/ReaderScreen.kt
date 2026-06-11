@@ -144,7 +144,8 @@ fun ReaderScreen(
                 if (state.activeTool == ActiveTool.ERASER) {
                     viewModel.eraseAnnotationsIntersecting(nativeRects, state.currentPage)
                 } else {
-                    viewModel.addHighlight(itemKey, nativeRects, extractedText)
+                    val type = if (state.activeTool == ActiveTool.UNDERLINE) "underline" else "highlight"
+                    viewModel.addHighlight(itemKey, nativeRects, extractedText, type)
                 }
             },
             onAnnotationTapped = { id, offset ->
@@ -304,6 +305,34 @@ fun ReaderScreen(
                                         )
                                     }
                                 }
+                                // Comment field
+                                Spacer(modifier = Modifier.height(16.dp))
+                                var commentText by remember(ann.key) { mutableStateOf(ann.annotationComment ?: "") }
+                                val commentChanged = commentText != (ann.annotationComment ?: "")
+                                androidx.compose.material3.OutlinedTextField(
+                                    value = commentText,
+                                    onValueChange = { commentText = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    maxLines = 3,
+                                    textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.White),
+                                    placeholder = { androidx.compose.material3.Text("Aggiungi un commento…", color = Color(0x80FFFFFF), fontSize = 12.sp) },
+                                    trailingIcon = {
+                                        if (commentChanged) {
+                                            IconButton(onClick = { viewModel.updateAnnotationComment(ann.key, commentText.trim()) }) {
+                                                Icon(Icons.Outlined.Check, contentDescription = "Salva commento", tint = Color(0xFF34D399))
+                                            }
+                                        }
+                                    },
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        cursorColor = Color(0xFF60A5FA),
+                                        focusedBorderColor = Color(0x8060A5FA),
+                                        unfocusedBorderColor = Color(0x33FFFFFF)
+                                    )
+                                )
+
                                 // New tag input: type to filter the lists below, or create a new tag
                                 Spacer(modifier = Modifier.height(16.dp))
                                 var tagQuery by remember(ann.key) { mutableStateOf("") }
@@ -472,6 +501,20 @@ fun ReaderScreen(
             geminiKeySet = state.geminiKeySet,
             onSendChatMessage = { viewModel.sendChatMessage(it) },
             onClearChat = { viewModel.clearChat() },
+            searchResults = state.searchResults,
+            isSearching = state.isSearching,
+            onSearch = { viewModel.searchInDocument(it) },
+            tocEntries = state.tocEntries,
+            onGoToPage = { viewModel.goToPage(it) },
+            onExportAnnotations = {
+                val markdown = viewModel.exportAnnotationsMarkdown()
+                val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(android.content.Intent.EXTRA_TEXT, markdown)
+                    putExtra(android.content.Intent.EXTRA_SUBJECT, "Annotazioni")
+                }
+                context.startActivity(android.content.Intent.createChooser(sendIntent, "Esporta annotazioni"))
+            },
             modifier = Modifier.fillMaxHeight().align(Alignment.CenterEnd)
         )
 

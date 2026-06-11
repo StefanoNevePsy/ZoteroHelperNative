@@ -40,7 +40,7 @@ fun MainNavigation() {
   val zoteroRepository = remember { ZoteroRepository(database, settingsRepository) }
 
   val libraryViewModel = remember { LibraryViewModel(settingsRepository, zoteroRepository) }
-  val readerViewModel = remember { ReaderViewModel(settingsRepository) } // Later we can pass repo here too
+  val readerViewModel = remember { ReaderViewModel(settingsRepository, zoteroRepository) }
   val settingsViewModel = remember { SettingsViewModel(settingsRepository) }
 
   NavDisplay(

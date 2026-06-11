@@ -20,6 +20,12 @@ interface ZoteroDao {
     @Query("SELECT * FROM zotero_items WHERE isDirty = 1")
     suspend fun getDirtyItems(): List<ZoteroItemEntity>
 
+    @Query("SELECT * FROM zotero_items WHERE parentItem = :parentKey AND itemType = 'annotation' AND isDeleted = 0")
+    suspend fun getAnnotationsForParent(parentKey: String): List<ZoteroItemEntity>
+
+    @Query("SELECT * FROM zotero_items WHERE `key` = :key LIMIT 1")
+    suspend fun getItem(key: String): ZoteroItemEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertItems(items: List<ZoteroItemEntity>)
 

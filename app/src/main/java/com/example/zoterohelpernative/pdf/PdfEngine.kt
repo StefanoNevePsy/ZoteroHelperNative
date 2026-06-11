@@ -10,6 +10,8 @@ import com.artifex.mupdf.fitz.StructuredText
 import com.artifex.mupdf.fitz.android.AndroidDrawDevice
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 /**
@@ -22,7 +24,10 @@ class PdfEngine {
     var pageCount: Int = 0
         private set
 
-    suspend fun loadDocument(file: File): Boolean = withContext(Dispatchers.IO) {
+    // MuPDF is not thread-safe: serialize all access to the Document
+    private val docMutex = Mutex()
+
+    suspend fun loadDocument(file: File): Boolean = withContext(Dispatchers.IO) { docMutex.withLock {
         try {
             document = Document.openDocument(file.absolutePath)
             pageCount = document?.countPages() ?: 0
@@ -31,9 +36,9 @@ class PdfEngine {
             e.printStackTrace()
             return@withContext false
         }
-    }
+    } }
 
-    suspend fun renderPage(pageIndex: Int, scale: Float = 1.0f): PageRenderResult? = withContext(Dispatchers.IO) {
+    suspend fun renderPage(pageIndex: Int, scale: Float = 1.0f): PageRenderResult? = withContext(Dispatchers.IO) { docMutex.withLock {
         val doc = document ?: return@withContext null
         if (pageIndex < 0 || pageIndex >= pageCount) return@withContext null
 
@@ -89,9 +94,9 @@ class PdfEngine {
         } finally {
             page?.destroy()
         }
-    }
+    } }
 
-    suspend fun renderViewport(pageIndex: Int, viewportRect: RectF, bitmapWidth: Int, bitmapHeight: Int): Bitmap? = withContext(Dispatchers.IO) {
+    suspend fun renderViewport(pageIndex: Int, viewportRect: RectF, bitmapWidth: Int, bitmapHeight: Int): Bitmap? = withContext(Dispatchers.IO) { docMutex.withLock {
         val doc = document ?: return@withContext null
         if (pageIndex < 0 || pageIndex >= pageCount) return@withContext null
 
@@ -122,7 +127,7 @@ class PdfEngine {
         } finally {
             page?.destroy()
         }
-    }
+    } }
 
     /**
      * Extracts the plain text of the whole document (used as context for the AI chat).
@@ -135,9 +140,10 @@ class PdfEngine {
         for (pageIndex in 0 until pageCount) {
             if (sb.length >= maxChars) break
             var page: Page? = null
-            try {
-                page = doc.loadPage(pageIndex)
-                val structuredText = page.toStructuredText("preserve-whitespace") ?: continue
+            try { docMutex.withLock {
+                val p = doc.loadPage(pageIndex)
+                page = p
+                val structuredText = p.toStructuredText("preserve-whitespace") ?: return@withLock
                 sb.append("\n\n[Pagina ${pageIndex + 1}]\n")
                 for (block in structuredText.blocks) {
                     for (line in block.lines) {
@@ -151,7 +157,7 @@ class PdfEngine {
                         sb.append('\n')
                     }
                 }
-            } catch (e: Exception) {
+            } } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
                 page?.destroy()
@@ -160,6 +166,89 @@ class PdfEngine {
 
         return@withContext if (sb.length > maxChars) sb.substring(0, maxChars) else sb.toString()
     }
+
+    /**
+     * Full-text search across the whole document, for the sidebar Search tab.
+     * Returns one entry per occurrence with a context snippet.
+     */
+    suspend fun searchText(query: String, maxResults: Int = 200): List<SearchHit> = withContext(Dispatchers.IO) {
+        val doc = document ?: return@withContext emptyList()
+        val normQuery = normalizeForSearch(query)
+        if (normQuery.length < 2) return@withContext emptyList()
+
+        val hits = mutableListOf<SearchHit>()
+        for (pageIndex in 0 until pageCount) {
+            if (hits.size >= maxResults) break
+            var page: Page? = null
+            try { docMutex.withLock {
+                val p = doc.loadPage(pageIndex)
+                page = p
+                val structuredText = p.toStructuredText("preserve-whitespace") ?: return@withLock
+                val raw = StringBuilder()
+                for (block in structuredText.blocks) {
+                    for (line in block.lines) {
+                        var lastRight = -1f
+                        for (char in line.chars) {
+                            val q = char.quad.toRect()
+                            if (lastRight != -1f && q.x0 - lastRight > 2.0f) raw.append(' ')
+                            raw.append(char.c.toChar())
+                            lastRight = q.x1
+                        }
+                        raw.append(' ')
+                    }
+                }
+                val norm = normalizeForSearch(raw.toString())
+                var from = 0
+                while (hits.size < maxResults) {
+                    val idx = norm.indexOf(normQuery, from)
+                    if (idx < 0) break
+                    val snippetStart = (idx - 40).coerceAtLeast(0)
+                    val snippetEnd = (idx + normQuery.length + 40).coerceAtMost(norm.length)
+                    val snippet = buildString {
+                        if (snippetStart > 0) append("…")
+                        append(norm.substring(snippetStart, snippetEnd).trim())
+                        if (snippetEnd < norm.length) append("…")
+                    }
+                    hits.add(SearchHit(pageIndex, snippet))
+                    from = idx + normQuery.length
+                }
+            } } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                page?.destroy()
+            }
+        }
+        hits
+    }
+
+    /**
+     * Flattened document outline (table of contents) with nesting level.
+     */
+    suspend fun getOutline(): List<TocEntry> = withContext(Dispatchers.IO) { docMutex.withLock {
+        val doc = document ?: return@withContext emptyList()
+        val entries = mutableListOf<TocEntry>()
+
+        fun visit(items: Array<com.artifex.mupdf.fitz.Outline>?, level: Int) {
+            if (items == null || level > 6) return
+            for (item in items) {
+                val pageIndex = try {
+                    val location = doc.resolveLink(item)
+                    doc.pageNumberFromLocation(location)
+                } catch (e: Exception) {
+                    -1
+                }
+                entries.add(TocEntry(item.title ?: "", pageIndex, level))
+                visit(item.down, level + 1)
+            }
+        }
+
+        try {
+            visit(doc.loadOutline(), 0)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        entries
+    } }
 
     /**
      * Finds a verbatim quote in the document and returns highlight-ready rects.
@@ -181,7 +270,7 @@ class PdfEngine {
         return null
     }
 
-    suspend fun findTextOnPage(pageIndex: Int, query: String): TextSearchResult? = withContext(Dispatchers.IO) {
+    suspend fun findTextOnPage(pageIndex: Int, query: String): TextSearchResult? = withContext(Dispatchers.IO) { docMutex.withLock {
         val doc = document ?: return@withContext null
         if (pageIndex < 0 || pageIndex >= pageCount) return@withContext null
         val normQuery = normalizeForSearch(query)
@@ -264,7 +353,7 @@ class PdfEngine {
         } finally {
             page?.destroy()
         }
-    }
+    } }
 
     // Returns null for chars to drop entirely (soft hyphen)
     private fun normalizeChar(c: Char): Char? = when (c) {
@@ -316,4 +405,15 @@ data class TextSearchResult(
     val pageHeight: Float,
     val rects: List<RectF>, // Zotero coordinates: y from the bottom of the page
     val matchedText: String
+)
+
+data class SearchHit(
+    val pageIndex: Int, // 0-based
+    val snippet: String
+)
+
+data class TocEntry(
+    val title: String,
+    val pageIndex: Int, // 0-based, -1 if unresolved
+    val level: Int
 )

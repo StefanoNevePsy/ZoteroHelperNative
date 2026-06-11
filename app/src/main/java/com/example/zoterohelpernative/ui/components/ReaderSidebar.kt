@@ -46,6 +46,12 @@ fun ReaderSidebar(
     geminiKeySet: Boolean = false,
     onSendChatMessage: (String) -> Unit = {},
     onClearChat: () -> Unit = {},
+    searchResults: List<com.example.zoterohelpernative.pdf.SearchHit> = emptyList(),
+    isSearching: Boolean = false,
+    onSearch: (String) -> Unit = {},
+    tocEntries: List<com.example.zoterohelpernative.pdf.TocEntry> = emptyList(),
+    onGoToPage: (Int) -> Unit = {},
+    onExportAnnotations: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedTab by remember { mutableStateOf(SidebarTab.ANNOTATIONS) }
@@ -86,6 +92,15 @@ fun ReaderSidebar(
                                 Icon(
                                     imageVector = Icons.Outlined.DeleteSweep,
                                     contentDescription = "Svuota chat",
+                                    tint = Color.White.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                        if (selectedTab == SidebarTab.ANNOTATIONS && annotations.isNotEmpty()) {
+                            IconButton(onClick = onExportAnnotations) {
+                                Icon(
+                                    imageVector = Icons.Outlined.IosShare,
+                                    contentDescription = "Esporta annotazioni in Markdown",
                                     tint = Color.White.copy(alpha = 0.7f)
                                 )
                             }
@@ -140,13 +155,124 @@ fun ReaderSidebar(
                 ) {
                     when (selectedTab) {
                         SidebarTab.TOC -> {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("Indice del Documento", color = Color.White.copy(alpha = 0.5f))
+                            if (tocEntries.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text("Il documento non ha un indice.", color = Color.White.copy(alpha = 0.5f))
+                                }
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(vertical = 8.dp)
+                                ) {
+                                    items(tocEntries.size) { index ->
+                                        val entry = tocEntries[index]
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable(enabled = entry.pageIndex >= 0) { onGoToPage(entry.pageIndex) }
+                                                .padding(
+                                                    start = (16 + entry.level * 16).dp,
+                                                    end = 16.dp,
+                                                    top = 10.dp,
+                                                    bottom = 10.dp
+                                                ),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = entry.title,
+                                                color = if (entry.level == 0) Color.White else Color.White.copy(alpha = 0.75f),
+                                                style = if (entry.level == 0) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
+                                                fontWeight = if (entry.level == 0) FontWeight.SemiBold else FontWeight.Normal,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            if (entry.pageIndex >= 0) {
+                                                Text(
+                                                    text = "${entry.pageIndex + 1}",
+                                                    color = Color(0xFF60A5FA),
+                                                    style = MaterialTheme.typography.labelSmall
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                         SidebarTab.SEARCH -> {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("Cerca nel PDF", color = Color.White.copy(alpha = 0.5f))
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                var searchInput by remember { mutableStateOf("") }
+                                OutlinedTextField(
+                                    value = searchInput,
+                                    onValueChange = {
+                                        searchInput = it
+                                        onSearch(it)
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    singleLine = true,
+                                    placeholder = { Text("Cerca nel documento…", color = Color(0x80FFFFFF)) },
+                                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = Color(0xB3FFFFFF)) },
+                                    trailingIcon = {
+                                        if (isSearching) {
+                                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color(0xFF60A5FA))
+                                        } else if (searchInput.isNotEmpty()) {
+                                            IconButton(onClick = { searchInput = ""; onSearch("") }) {
+                                                Icon(Icons.Outlined.Close, contentDescription = "Pulisci", tint = Color(0xB3FFFFFF))
+                                            }
+                                        }
+                                    },
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        cursorColor = Color(0xFF60A5FA),
+                                        focusedBorderColor = Color(0x8060A5FA),
+                                        unfocusedBorderColor = Color(0x33FFFFFF)
+                                    )
+                                )
+
+                                if (searchInput.length >= 2 && !isSearching) {
+                                    Text(
+                                        text = if (searchResults.isEmpty()) "Nessun risultato"
+                                               else "${searchResults.size} risultat${if (searchResults.size == 1) "o" else "i"}",
+                                        color = Color.White.copy(alpha = 0.5f),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                    )
+                                }
+
+                                LazyColumn(
+                                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                                    contentPadding = PaddingValues(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    items(searchResults.size) { index ->
+                                        val hit = searchResults[index]
+                                        GlassSurface(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { onGoToPage(hit.pageIndex) },
+                                            color = Color(0x26FFFFFF),
+                                            borderColor = Color(0x1AFFFFFF),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                        ) {
+                                            Column(modifier = Modifier.padding(10.dp)) {
+                                                Text(
+                                                    text = "Pagina ${hit.pageIndex + 1}",
+                                                    color = Color(0xFF60A5FA),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = hit.snippet,
+                                                    color = Color.White.copy(alpha = 0.85f),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    maxLines = 3
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                         SidebarTab.CHAT -> {
@@ -175,9 +301,19 @@ fun ReaderSidebar(
                                         key = { it.key }
                                     ) { ann ->
                                         val annColor = getUiColor(ann.annotationColor ?: "#ffd400")
-                                        
+
                                         GlassSurface(
-                                            modifier = Modifier.fillMaxWidth(),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    // Jump to the annotation's page
+                                                    val pageFromPosition = ann.annotationPosition?.let { pos ->
+                                                        Regex("\"pageIndex\"\\s*:\\s*(\\d+)").find(pos)?.groupValues?.get(1)?.toIntOrNull()
+                                                    }
+                                                    val page = pageFromPosition
+                                                        ?: ann.annotationPageLabel?.toIntOrNull()?.minus(1)
+                                                    if (page != null) onGoToPage(page)
+                                                },
                                             color = Color(0x33FFFFFF), // Lighter card over dark background
                                             borderColor = Color(0x1AFFFFFF),
                                             blurRadius = 16.dp,
