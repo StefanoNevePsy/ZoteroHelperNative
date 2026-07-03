@@ -33,6 +33,7 @@ import com.example.zoterohelpernative.ui.components.GlassSurface
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.automirrored.outlined.*
 import dev.chrisbanes.haze.hazeSource
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -194,6 +195,48 @@ fun SettingsScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = textFieldColors
                             )
+                        }
+                    }
+
+                    // Cache Section
+                    GlassSurface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0x1A000000)
+                    ) {
+                        Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Text("Cache documenti", style = MaterialTheme.typography.titleMedium, color = Color(0xFFFACC15), fontWeight = FontWeight.Bold)
+                            Text(
+                                "I PDF scaricati restano sul dispositivo per aprirsi all'istante e funzionare offline. Svuota la cache per liberare spazio o forzare il riscaricamento di tutti i documenti.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xB3FFFFFF)
+                            )
+                            val context = androidx.compose.ui.platform.LocalContext.current
+                            val scope = androidx.compose.runtime.rememberCoroutineScope()
+                            var cacheMessage by remember { mutableStateOf<String?>(null) }
+                            Button(
+                                onClick = {
+                                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                        var freedBytes = 0L
+                                        context.cacheDir.listFiles()?.forEach { file ->
+                                            if (file.name.startsWith("extracted_") || file.name.endsWith(".zip")) {
+                                                freedBytes += file.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+                                                file.deleteRecursively()
+                                            }
+                                        }
+                                        cacheMessage = "Cache svuotata (%.1f MB liberati)".format(freedBytes / 1_048_576.0)
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                shape = MaterialTheme.shapes.medium,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0x33FACC15), contentColor = Color(0xFFFACC15))
+                            ) {
+                                Icon(Icons.Outlined.DeleteSweep, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Svuota cache documenti", fontWeight = FontWeight.Bold)
+                            }
+                            cacheMessage?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall, color = Color(0xFF34D399))
+                            }
                         }
                     }
 

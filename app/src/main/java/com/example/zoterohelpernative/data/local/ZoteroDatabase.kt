@@ -20,6 +20,9 @@ interface ZoteroDao {
     @Query("SELECT * FROM zotero_items WHERE isDirty = 1")
     suspend fun getDirtyItems(): List<ZoteroItemEntity>
 
+    @Query("SELECT COUNT(*) FROM zotero_items WHERE isDirty = 1")
+    fun getDirtyCountFlow(): Flow<Int>
+
     @Query("SELECT * FROM zotero_items WHERE parentItem = :parentKey AND itemType = 'annotation' AND isDeleted = 0")
     suspend fun getAnnotationsForParent(parentKey: String): List<ZoteroItemEntity>
 

@@ -34,6 +34,7 @@ class SettingsRepository(private val context: Context) {
         val TOOL_ICONS = stringPreferencesKey("tool_icons")
         val LAST_OPENED_MAP = stringPreferencesKey("last_opened_map")
         val LAST_PAGE_MAP = stringPreferencesKey("last_page_map")
+        val PDF_MD5_MAP = stringPreferencesKey("pdf_md5_map")
     }
 
     private val gson = Gson()
@@ -125,6 +126,37 @@ class SettingsRepository(private val context: Context) {
             } catch (e: Exception) {
                 emptyMap()
             }
+        }
+    }
+
+    // attachmentKey -> md5 of the cached PDF, to detect files replaced on Zotero
+    val pdfMd5Map: Flow<Map<String, String>> = context.dataStore.data.map { prefs ->
+        val json = prefs[PDF_MD5_MAP]
+        if (json.isNullOrEmpty()) {
+            emptyMap()
+        } else {
+            try {
+                val type = object : TypeToken<Map<String, String>>() {}.type
+                gson.fromJson(json, type)
+            } catch (e: Exception) {
+                emptyMap()
+            }
+        }
+    }
+
+    suspend fun savePdfMd5(attachmentKey: String, md5: String) {
+        context.dataStore.edit { preferences ->
+            val current: Map<String, String> = try {
+                val json = preferences[PDF_MD5_MAP]
+                if (json.isNullOrEmpty()) emptyMap()
+                else gson.fromJson(json, object : TypeToken<Map<String, String>>() {}.type)
+            } catch (e: Exception) {
+                emptyMap()
+            }
+            val updated = (current + (attachmentKey to md5)).entries
+                .toList().takeLast(500)
+                .associate { it.key to it.value }
+            preferences[PDF_MD5_MAP] = gson.toJson(updated)
         }
     }
 

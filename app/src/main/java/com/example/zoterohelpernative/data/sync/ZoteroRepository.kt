@@ -115,6 +115,12 @@ class ZoteroRepository(
         saveLocalAnnotation(itemData, dirty = true, deleted = true)
     }
 
+    val pendingSyncCount: Flow<Int> = database.zoteroDao().getDirtyCountFlow()
+
+    private fun isPermanentRejection(code: Int?): Boolean =
+        code != null && code in 400..499 &&
+            code != 401 && code != 403 && code != 408 && code != 412 && code != 429
+
     suspend fun sync() = withContext(Dispatchers.IO) {
         val apiKey = settingsRepository.zoteroApiKey.firstOrNull()
         val userId = settingsRepository.zoteroUserId.firstOrNull()
@@ -147,6 +153,13 @@ class ZoteroRepository(
                                     isDirty = false
                                 )
                             )
+                        } else {
+                            // A validation rejection will fail the same way forever: drop it
+                            val errorCode = res.body()?.failed?.values?.firstOrNull()?.code
+                            if (isPermanentRejection(errorCode) || isPermanentRejection(res.code())) {
+                                Log.e("ZoteroSync", "Dropping invalid queued item ${localItem.key} (code $errorCode)")
+                                database.zoteroDao().deleteItem(localItem.key)
+                            }
                         }
                         continue
                     }
@@ -183,6 +196,17 @@ class ZoteroRepository(
                                     isDirty = false
                                 )
                             )
+                        } else if (updateRes.code() == 404) {
+                            // Deleted remotely: requeue as a creation
+                            database.zoteroDao().insertItem(
+                                localItem.copy(
+                                    version = 0,
+                                    jsonData = gson.toJson(itemData.copy(version = 0))
+                                )
+                            )
+                        } else if (isPermanentRejection(updateRes.code())) {
+                            Log.e("ZoteroSync", "Dropping invalid queued update ${localItem.key} (HTTP ${updateRes.code()})")
+                            database.zoteroDao().insertItem(localItem.copy(isDirty = false))
                         }
                     }
                 } catch (e: Exception) {

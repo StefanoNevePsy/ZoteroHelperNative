@@ -157,6 +157,9 @@ fun ReaderScreen(
             onAnnotationTapped = { id, offset ->
                 viewModel.selectAnnotation(id, offset)
             },
+            onDoubleTap = { offset ->
+                viewModel.toggleZoomAt(offset)
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .hazeSource(hazeState)
@@ -568,11 +571,59 @@ fun ReaderScreen(
             ) {
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Precedente", tint = androidx.compose.ui.graphics.Color.White)
             }
+            var showPageDialog by remember { mutableStateOf(false) }
             Text(
                 text = "${state.currentPage + 1} / ${state.numPages}",
                 color = androidx.compose.ui.graphics.Color.White,
-                modifier = Modifier.padding(horizontal = 16.dp)
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .clickable { showPageDialog = true }
             )
+            if (showPageDialog) {
+                var pageInput by remember { mutableStateOf("") }
+                androidx.compose.material3.AlertDialog(
+                    containerColor = Color(0xFF1E1E24),
+                    titleContentColor = Color.White,
+                    onDismissRequest = { showPageDialog = false },
+                    title = { Text("Vai a pagina", fontWeight = FontWeight.Bold) },
+                    text = {
+                        androidx.compose.material3.OutlinedTextField(
+                            value = pageInput,
+                            onValueChange = { pageInput = it.filter { c -> c.isDigit() } },
+                            singleLine = true,
+                            label = { Text("Pagina (1-${state.numPages})") },
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                            ),
+                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                cursorColor = Color(0xFF60A5FA),
+                                focusedBorderColor = Color(0x8060A5FA),
+                                unfocusedBorderColor = Color(0x33FFFFFF),
+                                focusedLabelColor = Color(0xFF60A5FA),
+                                unfocusedLabelColor = Color(0xB3FFFFFF)
+                            )
+                        )
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                pageInput.toIntOrNull()?.let { viewModel.goToPage(it - 1) }
+                                showPageDialog = false
+                            },
+                            enabled = pageInput.toIntOrNull()?.let { it in 1..state.numPages } == true
+                        ) {
+                            Text("Vai", color = Color(0xFF60A5FA), fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(onClick = { showPageDialog = false }) {
+                            Text("Annulla", color = Color(0xB3FFFFFF))
+                        }
+                    }
+                )
+            }
             IconButton(
                 onClick = { viewModel.nextPage() },
                 enabled = state.currentPage < state.numPages - 1

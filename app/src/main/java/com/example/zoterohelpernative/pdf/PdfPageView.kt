@@ -66,6 +66,7 @@ fun PdfPageView(
     onPanZoomUpdate: (panChange: Offset, zoomChange: Float, centroid: Offset) -> Unit,
     onAnnotationCreated: (List<androidx.compose.ui.geometry.Rect>, String) -> Unit,
     onAnnotationTapped: (String?, Offset) -> Unit,
+    onDoubleTap: (Offset) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val currentAnnotations by rememberUpdatedState(annotations)
@@ -83,6 +84,7 @@ fun PdfPageView(
     var dragEndPoint by remember { mutableStateOf<Offset?>(null) }
     var currentExtractedText by remember { mutableStateOf<String?>(null) }
     var lastGestureEndTime by remember { mutableStateOf(0L) }
+    var lastPanTapTime by remember { mutableStateOf(0L) }
 
     val colorFilter = remember(pdfTheme) {
         when (pdfTheme) {
@@ -218,8 +220,15 @@ fun PdfPageView(
                             } else {
                                 lastGestureEndTime = System.currentTimeMillis()
                                 if (isTap) {
-                                    val localOffset = (down.position - currentPan) / currentZoom
-                                    onAnnotationTapped(findAnnotationAt(localOffset), down.position)
+                                    val now = System.currentTimeMillis()
+                                    if (now - lastPanTapTime < 300L) {
+                                        lastPanTapTime = 0L
+                                        onDoubleTap(down.position)
+                                    } else {
+                                        lastPanTapTime = now
+                                        val localOffset = (down.position - currentPan) / currentZoom
+                                        onAnnotationTapped(findAnnotationAt(localOffset), down.position)
+                                    }
                                 }
                                 break
                             }

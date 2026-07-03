@@ -38,7 +38,8 @@ data class LibraryState(
     val sortOption: LibrarySortOption = LibrarySortOption.TITLE,
     val sortAscending: Boolean = true,
     val filterTag: String? = null,
-    val lastOpened: Map<String, Long> = emptyMap()
+    val lastOpened: Map<String, Long> = emptyMap(),
+    val pendingSyncCount: Int = 0
 )
 
 val LibraryState.allTags: List<String>
@@ -122,6 +123,12 @@ class LibraryViewModel(
         viewModelScope.launch {
             settingsRepository.lastOpenedMap.collect { map ->
                 _state.update { it.copy(lastOpened = map) }
+            }
+        }
+
+        viewModelScope.launch {
+            zoteroRepository.pendingSyncCount.collect { count ->
+                _state.update { it.copy(pendingSyncCount = count) }
             }
         }
         

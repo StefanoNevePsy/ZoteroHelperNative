@@ -85,7 +85,36 @@ fun LibraryScreen(
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
-                        Row {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (state.pendingSyncCount > 0) {
+                                // Offline queue indicator: tap to force a sync
+                                Surface(
+                                    color = Color(0x33FACC15),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .padding(end = 8.dp)
+                                        .clickable { viewModel.loadLibrary() }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.CloudUpload,
+                                            contentDescription = "Modifiche in attesa di sincronizzazione",
+                                            tint = Color(0xFFFACC15),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "${state.pendingSyncCount}",
+                                            color = Color(0xFFFACC15),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
                             IconButton(onClick = { viewModel.loadLibrary() }) {
                                 Icon(Icons.Outlined.Refresh, contentDescription = "Refresh", tint = Color.White)
                             }

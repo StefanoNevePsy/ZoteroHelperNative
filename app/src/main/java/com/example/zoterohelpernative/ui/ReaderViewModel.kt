@@ -261,6 +261,16 @@ class ReaderViewModel(
         _state.update { it.copy(zoomLevel = 1.0f, panOffset = Offset.Zero) }
     }
 
+    // Double tap: zoom in around the tapped point, or back to fit
+    fun toggleZoomAt(centroid: Offset) {
+        val current = _state.value.zoomLevel
+        if (current > 1.3f) {
+            fitPage()
+        } else {
+            updatePanZoom(Offset.Zero, 2.5f / current, centroid)
+        }
+    }
+
     fun updatePanZoom(panChange: Offset, zoomChange: Float, centroid: Offset) {
         _state.update { 
             val oldZoom = it.zoomLevel
@@ -318,10 +328,43 @@ class ReaderViewModel(
     }
 
     fun undoLastAction() {
-        if (undoStack.isNotEmpty()) {
-            val prevState = undoStack.removeLast()
-            _state.update { it.copy(annotations = prevState) }
-            selectAnnotation(null)
+        if (undoStack.isEmpty()) return
+        val restored = undoStack.removeLast()
+        val current = _state.value.annotations
+
+        val restoredByKey = restored.associateBy { it.key }
+        val currentByKey = current.associateBy { it.key }
+
+        // Annotations the undone action ADDED: remove them from the server too
+        current.filter { it.key !in restoredByKey }.forEach { ann ->
+            if (ann.version != 0L) {
+                deleteItemFromZotero(ann)
+            } else {
+                viewModelScope.launch { zoteroRepository?.removeLocalItem(ann.key) }
+            }
+        }
+
+        // Annotations the undone action DELETED get version 0 so the sync recreates
+        // them; annotations it MODIFIED keep the latest known version so the PATCH
+        // doesn't fail with 412.
+        val restoredList = restored.map { ann ->
+            val cur = currentByKey[ann.key]
+            when {
+                cur == null && ann.version != 0L -> ann.copy(version = 0)
+                cur != null -> ann.copy(version = cur.version)
+                else -> ann
+            }
+        }
+
+        _state.update { it.copy(annotations = restoredList) }
+        selectAnnotation(null)
+
+        // Push recreations and restored contents back to Zotero
+        restoredList.forEach { ann ->
+            val cur = currentByKey[ann.key]
+            if (cur == null || cur.copy(version = 0) != ann.copy(version = 0)) {
+                syncItemToZotero(ann)
+            }
         }
     }
 
@@ -818,6 +861,22 @@ class ReaderViewModel(
         }
     }
 
+    // Validation rejections will fail identically on every retry: queueing them
+    // would poison the offline queue. 401/403 (credentials), 408/429 (transient)
+    // and 412 (version conflict, resolved by the periodic sync) are retryable.
+    private fun isPermanentRejection(code: Int?): Boolean =
+        code != null && code in 400..499 &&
+            code != 401 && code != 403 && code != 408 && code != 412 && code != 429
+
+    private suspend fun dropInvalidAnnotation(itemData: ItemData, reason: String) {
+        try {
+            zoteroRepository?.removeLocalItem(itemData.key)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        setSyncError("Annotazione rifiutata dal server ($reason): non verrà ritentata.")
+    }
+
     private fun syncItemToZotero(itemData: ItemData) {
         viewModelScope.launch {
             syncMutex.withLock {
@@ -842,9 +901,15 @@ class ReaderViewModel(
                                 zoteroRepository?.saveLocalAnnotation(payload.copy(key = created.key, version = created.version), dirty = false)
                             }
                             else -> {
-                                val reason = body?.failed?.values?.firstOrNull()?.message
-                                    ?: "HTTP ${response.code()}"
-                                queueOffline(payload, "Salvataggio fallito ($reason).")
+                                val itemError = body?.failed?.values?.firstOrNull()
+                                val reason = itemError?.message ?: "HTTP ${response.code()}"
+                                val permanent = (response.isSuccessful && isPermanentRejection(itemError?.code))
+                                    || isPermanentRejection(response.code())
+                                if (permanent) {
+                                    dropInvalidAnnotation(payload, reason)
+                                } else {
+                                    queueOffline(payload, "Salvataggio fallito ($reason).")
+                                }
                             }
                         }
                     } else {
@@ -855,6 +920,12 @@ class ReaderViewModel(
                                 updateLocalAnnotation(payload.key) { it.copy(version = newVersion) }
                             }
                             zoteroRepository?.saveLocalAnnotation(payload.copy(version = newVersion ?: payload.version), dirty = false)
+                        } else if (response.code() == 404) {
+                            // Deleted remotely: recreate instead of updating forever
+                            updateLocalAnnotation(payload.key) { it.copy(version = 0) }
+                            queueOffline(payload.copy(version = 0), "Annotazione assente sul server.")
+                        } else if (isPermanentRejection(response.code())) {
+                            dropInvalidAnnotation(payload, "HTTP ${response.code()}")
                         } else {
                             queueOffline(payload, "Aggiornamento fallito (HTTP ${response.code()}).")
                         }
@@ -1113,7 +1184,12 @@ class ReaderViewModel(
 
         viewModelScope.launch {
             try {
-                val docText = documentTextCache ?: pdfEngine.extractAllText().also { documentTextCache = it }
+                val fullText = documentTextCache
+                    ?: pdfEngine.extractAllText(maxChars = 400_000).also { documentTextCache = it }
+                // Gemini Flash has a ~1M-token context; many NIM models stop at 128k tokens
+                val providerLimit = if (_state.value.chatProvider == "nvidia") 100_000 else 400_000
+                val docText = if (fullText.length > providerLimit) fullText.take(providerLimit) else fullText
+                val isTruncated = fullText.length > docText.length || fullText.length >= 400_000
 
                 val systemPrompt = buildString {
                     append("Sei un assistente di ricerca accademica integrato in un lettore PDF. ")
@@ -1128,6 +1204,10 @@ class ReaderViewModel(
                     } else {
                         append("=== TESTO DEL DOCUMENTO ===\n")
                         append(docText)
+                        if (isTruncated) {
+                            append("\n\n[NOTA: il documento continua oltre questo punto ma il testo è stato troncato. ")
+                            append("Se l'utente chiede delle parti finali, avvisalo di questo limite.]")
+                        }
                     }
                 }
 
@@ -1434,11 +1514,32 @@ class ReaderViewModel(
                 // The itemKey passed from the UI IS the attachment key!
                 val attachmentKey = itemKey
 
-                // 2./3. Reuse the cached PDF when present, otherwise download from
-                // WebDAV and extract the ZIP
+                // 1.5 Attachment metadata: parent item (for AI notes) and remote md5
+                // (to invalidate the cache when the PDF was replaced on Zotero)
+                var remoteMd5: String? = null
+                try {
+                    val res = apiService.getItems(userId, apiKey, itemKey = attachmentKey)
+                    val attachmentData = res.body()?.firstOrNull()?.data
+                    currentParentItemKey = attachmentData?.parentItem
+                    remoteMd5 = attachmentData?.md5
+                } catch (e: Exception) {
+                    e.printStackTrace() // offline: the cache decision falls back to "use it"
+                }
+
+                // 2./3. Reuse the cached PDF when present and still current,
+                // otherwise download from WebDAV and extract the ZIP
                 val extractDir = File(cacheDir, "extracted_$attachmentKey")
-                val cachedPdf = extractDir.listFiles()
+                var cachedPdf = extractDir.listFiles()
                     ?.firstOrNull { it.isFile && it.extension.equals("pdf", ignoreCase = true) && it.length() > 0 }
+
+                if (cachedPdf != null && remoteMd5 != null) {
+                    val storedMd5 = settingsRepository.pdfMd5Map.firstOrNull()?.get(attachmentKey)
+                    if (storedMd5 != null && storedMd5 != remoteMd5) {
+                        extractDir.deleteRecursively()
+                        cachedPdf = null
+                    }
+                }
+
                 val pdfFile = if (cachedPdf != null) {
                     cachedPdf
                 } else {
@@ -1449,6 +1550,7 @@ class ReaderViewModel(
                     }
                     val extracted = ZipUtils.extractPdfFromZip(zipFile, extractDir)
                     zipFile.delete() // the extracted PDF is what we cache, no need to keep the archive
+                    remoteMd5?.let { settingsRepository.savePdfMd5(attachmentKey, it) }
                     extracted
                 }
 
@@ -1491,16 +1593,6 @@ class ReaderViewModel(
 
                     // Library tags load in parallel: they must not delay the PDF
                     refreshLibraryTags(userId, apiKey)
-
-                    // Parent item of the attachment, used to attach AI-generated notes
-                    viewModelScope.launch {
-                        try {
-                            val res = apiService.getItems(userId, apiKey, itemKey = attachmentKey)
-                            currentParentItemKey = res.body()?.firstOrNull()?.data?.parentItem
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
                 } catch (e: Exception) {
                     e.printStackTrace()
                     // Offline: use whatever is cached locally
