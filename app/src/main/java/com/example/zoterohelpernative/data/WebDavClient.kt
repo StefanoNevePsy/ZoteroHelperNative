@@ -39,29 +39,24 @@ class WebDavClient {
 
         val request = requestBuilder.build()
         try {
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                // If the file is not a zip, maybe it's stored directly as .pdf
-                // Fallback logic could go here if Zotero stores it differently.
-                throw IOException("Unexpected code $response")
-            }
+            // The response must always be closed or the connection leaks
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw IOException("Unexpected code $response")
+                }
 
-            response.body()?.let { responseBody ->
+                val responseBody = response.body() ?: return@withContext null
                 val targetFile = File(cacheDir, "$attachmentKey.zip")
-                val fos = FileOutputStream(targetFile)
-                fos.use { output ->
+                FileOutputStream(targetFile).use { output ->
                     responseBody.byteStream().copyTo(output)
                 }
-                
-                // Usually we'd need to unzip the .zip to get the .pdf inside.
-                // Assuming `UnzipUtils.unzip(targetFile, cacheDir)` here.
-                // Returning the zipped file for now.
                 return@withContext targetFile
             }
         } catch (e: Exception) {
             e.printStackTrace()
             return@withContext null
         }
+        @Suppress("UNREACHABLE_CODE")
         return@withContext null
     }
 }

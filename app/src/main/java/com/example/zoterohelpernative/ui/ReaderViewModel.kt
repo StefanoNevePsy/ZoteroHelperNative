@@ -83,6 +83,11 @@ data class ReaderState(
     val chatMessages: List<ChatMessage> = emptyList(),
     val isChatSending: Boolean = false,
     val geminiKeySet: Boolean = false,
+    val nvidiaKeySet: Boolean = false,
+    val chatProvider: String = "gemini", // "gemini" | "nvidia"
+    val nvidiaModels: List<String> = emptyList(),
+    val selectedNvidiaModel: String = "",
+    val isLoadingNvidiaModels: Boolean = false,
 
     // In-document search & table of contents
     val searchResults: List<com.example.zoterohelpernative.pdf.SearchHit> = emptyList(),
@@ -140,6 +145,25 @@ class ReaderViewModel(
         viewModelScope.launch {
             settingsRepository.geminiApiKey.collect { key ->
                 _state.update { it.copy(geminiKeySet = !key.isNullOrBlank()) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.nvidiaApiKey.collect { key ->
+                val wasSet = _state.value.nvidiaKeySet
+                _state.update { it.copy(nvidiaKeySet = !key.isNullOrBlank()) }
+                if (!key.isNullOrBlank() && !wasSet) {
+                    refreshNvidiaModels()
+                }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.chatProvider.collect { provider ->
+                _state.update { it.copy(chatProvider = provider) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.nvidiaModel.collect { model ->
+                _state.update { it.copy(selectedNvidiaModel = model ?: "") }
             }
         }
     }
@@ -513,9 +537,10 @@ class ReaderViewModel(
 
     fun addAnnotation(annotation: ItemData) {
         val newAnnotations = _state.value.annotations.toMutableList()
-        
+
         // Find if it overlaps with an existing annotation of the same color on the same page
         var merged = false
+        var mergedIntoKey: String? = null
         if (annotation.annotationType == "highlight") {
             try {
                 val newJson = org.json.JSONObject(annotation.annotationPosition)
@@ -641,6 +666,7 @@ class ReaderViewModel(
                                 newAnnotations[i] = updatedAnn
                                 _state.update { it.copy(annotations = newAnnotations) }
                                 merged = true
+                                mergedIntoKey = updatedAnn.key
                                 break
                             }
                         }
@@ -657,9 +683,8 @@ class ReaderViewModel(
             // Sync new annotation
             syncItemToZotero(annotation)
         } else {
-            // Find the merged annotation to sync
-            val mergedAnn = newAnnotations.find { it.key == annotation.key } 
-                ?: newAnnotations.lastOrNull { it.annotationType == "highlight" && it.annotationColor == annotation.annotationColor }
+            // Sync exactly the annotation the new one was merged into
+            val mergedAnn = newAnnotations.find { it.key == mergedIntoKey }
             if (mergedAnn != null) {
                 syncItemToZotero(mergedAnn)
             }
@@ -883,6 +908,57 @@ class ReaderViewModel(
             .create(com.example.zoterohelpernative.data.GeminiApiService::class.java)
     }
 
+    private val nvidiaService by lazy {
+        Retrofit.Builder()
+            .baseUrl("https://integrate.api.nvidia.com/")
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(com.example.zoterohelpernative.data.NvidiaApiService::class.java)
+    }
+
+    fun setChatProvider(provider: String) {
+        viewModelScope.launch { settingsRepository.saveChatProvider(provider) }
+        if (provider == "nvidia" && _state.value.nvidiaModels.isEmpty()) {
+            refreshNvidiaModels()
+        }
+    }
+
+    fun setNvidiaModel(model: String) {
+        viewModelScope.launch { settingsRepository.saveNvidiaModel(model) }
+    }
+
+    // The selector is self-updating: the list always comes live from /v1/models
+    fun refreshNvidiaModels() {
+        viewModelScope.launch {
+            val apiKey = settingsRepository.nvidiaApiKey.firstOrNull() ?: return@launch
+            if (apiKey.isBlank()) return@launch
+            _state.update { it.copy(isLoadingNvidiaModels = true) }
+            try {
+                val response = nvidiaService.listModels("Bearer $apiKey")
+                val models = response.body()?.data
+                    ?.map { it.id }
+                    ?.distinct()
+                    ?.sorted()
+                    ?: emptyList()
+                if (models.isNotEmpty()) {
+                    _state.update { it.copy(nvidiaModels = models) }
+                    // Keep the current selection if still available, otherwise pick a default
+                    val selected = _state.value.selectedNvidiaModel
+                    if (selected.isBlank() || selected !in models) {
+                        val default = models.firstOrNull { it.contains("llama-3.3-70b-instruct") }
+                            ?: models.firstOrNull { it.contains("instruct") }
+                            ?: models.first()
+                        settingsRepository.saveNvidiaModel(default)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _state.update { it.copy(isLoadingNvidiaModels = false) }
+            }
+        }
+    }
+
     private var documentTextCache: String? = null
     private var currentAttachmentKey: String? = null
     private var currentParentItemKey: String? = null
@@ -1037,12 +1113,6 @@ class ReaderViewModel(
 
         viewModelScope.launch {
             try {
-                val apiKey = settingsRepository.geminiApiKey.firstOrNull()
-                if (apiKey.isNullOrBlank()) {
-                    appendChatError("Imposta la API key di Gemini nelle Impostazioni per usare la chat.")
-                    return@launch
-                }
-
                 val docText = documentTextCache ?: pdfEngine.extractAllText().also { documentTextCache = it }
 
                 val systemPrompt = buildString {
@@ -1059,6 +1129,27 @@ class ReaderViewModel(
                         append("=== TESTO DEL DOCUMENTO ===\n")
                         append(docText)
                     }
+                }
+
+                if (_state.value.chatProvider == "nvidia") {
+                    runNvidiaChat(systemPrompt)
+                } else {
+                    runGeminiChat(systemPrompt)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                appendChatError("Errore di rete: ${e.localizedMessage ?: "sconosciuto"}")
+            } finally {
+                _state.update { it.copy(isChatSending = false) }
+            }
+        }
+    }
+
+    private suspend fun runGeminiChat(systemPrompt: String) {
+                val apiKey = settingsRepository.geminiApiKey.firstOrNull()
+                if (apiKey.isNullOrBlank()) {
+                    appendChatError("Imposta la API key di Gemini nelle Impostazioni per usare la chat.")
+                    return
                 }
 
                 val contents = _state.value.chatMessages
@@ -1096,13 +1187,13 @@ class ReaderViewModel(
                         } catch (e: Exception) { null }
                         val reason = errorBody?.error?.message ?: body?.error?.message ?: "HTTP ${response.code()}"
                         appendChatError("Errore Gemini: $reason")
-                        return@launch
+                        return
                     }
 
                     val content = body?.candidates?.firstOrNull()?.content
                     if (content == null) {
                         appendChatError("Errore Gemini: risposta vuota (${body?.error?.message ?: "nessun candidato"})")
-                        return@launch
+                        return
                     }
 
                     val functionCalls = content.parts.mapNotNull { it.functionCall }
@@ -1145,14 +1236,165 @@ class ReaderViewModel(
                 } else {
                     appendChatError("Errore Gemini: nessuna risposta ricevuta.")
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                appendChatError("Errore di rete: ${e.localizedMessage ?: "sconosciuto"}")
-            } finally {
-                _state.update { it.copy(isChatSending = false) }
+    }
+
+    private suspend fun runNvidiaChat(systemPrompt: String) {
+        val apiKey = settingsRepository.nvidiaApiKey.firstOrNull()
+        if (apiKey.isNullOrBlank()) {
+            appendChatError("Imposta la API key di NVIDIA nelle Impostazioni per usare questo provider.")
+            return
+        }
+        val model = _state.value.selectedNvidiaModel
+        if (model.isBlank()) {
+            appendChatError("Seleziona un modello NVIDIA dal menu in alto nella chat.")
+            return
+        }
+
+        val auth = "Bearer $apiKey"
+        val gson = com.google.gson.Gson()
+
+        val messages = mutableListOf(
+            com.example.zoterohelpernative.data.OpenAIMessage("system", systemPrompt)
+        )
+        _state.value.chatMessages.filter { !it.isError }.forEach {
+            messages += com.example.zoterohelpernative.data.OpenAIMessage(
+                role = if (it.role == "model") "assistant" else "user",
+                content = it.text
+            )
+        }
+
+        // Not every NIM model supports tool calling: on a 400 retry without tools
+        var useTools = true
+        var finalText: String? = null
+        var highlightsCreated = 0
+        var round = 0
+
+        while (round < 5) {
+            round++
+            val request = com.example.zoterohelpernative.data.OpenAIChatRequest(
+                model = model,
+                messages = messages,
+                tools = if (useTools) openAiTools() else null,
+                temperature = 0.3f,
+                maxTokens = 4096
+            )
+            val response = nvidiaService.chatCompletions(auth, request)
+
+            if (!response.isSuccessful) {
+                val rawError = try { response.errorBody()?.string() } catch (e: Exception) { null }
+                if (useTools && response.code() == 400) {
+                    useTools = false
+                    continue
+                }
+                val detail = rawError?.take(200)?.replace("\n", " ") ?: ""
+                appendChatError("Errore NVIDIA (HTTP ${response.code()}): $detail")
+                return
+            }
+
+            val message = response.body()?.choices?.firstOrNull()?.message
+            if (message == null) {
+                appendChatError("Errore NVIDIA: risposta vuota.")
+                return
+            }
+
+            val toolCalls = message.toolCalls.orEmpty()
+            if (toolCalls.isEmpty()) {
+                finalText = message.content
+                break
+            }
+
+            messages += message
+            for (call in toolCalls) {
+                val argsMap: Map<String, Any?> = try {
+                    gson.fromJson(
+                        call.function?.arguments ?: "{}",
+                        object : com.google.gson.reflect.TypeToken<Map<String, Any?>>() {}.type
+                    )
+                } catch (e: Exception) {
+                    emptyMap()
+                }
+                val result = when (call.function?.name) {
+                    "create_highlight" -> executeCreateHighlight(argsMap).also {
+                        if (it["success"] == true) highlightsCreated++
+                    }
+                    "save_note" -> executeSaveNote(argsMap)
+                    else -> mapOf("success" to false, "error" to "Funzione sconosciuta: ${call.function?.name}")
+                }
+                messages += com.example.zoterohelpernative.data.OpenAIMessage(
+                    role = "tool",
+                    content = gson.toJson(result),
+                    toolCallId = call.id
+                )
             }
         }
+
+        val answer = finalText?.takeIf { it.isNotBlank() }
+            ?: if (highlightsCreated > 0) {
+                "Ho creato $highlightsCreated evidenziazion${if (highlightsCreated == 1) "e" else "i"} nel documento."
+            } else null
+
+        if (answer != null) {
+            _state.update {
+                it.copy(chatMessages = it.chatMessages + ChatMessage("model", answer.trim()))
+            }
+        } else {
+            appendChatError("Errore NVIDIA: nessuna risposta ricevuta.")
+        }
     }
+
+    // OpenAI-format mirror of chatTools(), for NVIDIA NIM models
+    private fun openAiTools(): List<com.example.zoterohelpernative.data.OpenAIToolDef> = listOf(
+        com.example.zoterohelpernative.data.OpenAIToolDef(
+            function = com.example.zoterohelpernative.data.OpenAIFunctionDef(
+                name = "create_highlight",
+                description = "Crea un'evidenziazione permanente nel PDF su un passaggio del documento. " +
+                    "Usala quando l'utente chiede di evidenziare, marcare o segnare passaggi del testo. " +
+                    "Puoi chiamarla più volte per evidenziare più passaggi.",
+                parameters = mapOf(
+                    "type" to "object",
+                    "properties" to mapOf(
+                        "quote" to mapOf(
+                            "type" to "string",
+                            "description" to "Citazione ESATTA e contigua copiata letteralmente dal testo del documento, " +
+                                "tra 5 e 300 caratteri. Non parafrasare e non attraversare i marcatori [Pagina N]."
+                        ),
+                        "page" to mapOf(
+                            "type" to "integer",
+                            "description" to "Numero della pagina in cui si trova la citazione, come indicato dai marcatori [Pagina N]."
+                        ),
+                        "color" to mapOf(
+                            "type" to "string",
+                            "description" to "Colore dell'evidenziazione (opzionale).",
+                            "enum" to highlightColorMap.keys.toList()
+                        ),
+                        "comment" to mapOf(
+                            "type" to "string",
+                            "description" to "Breve nota da allegare all'evidenziazione (opzionale)."
+                        )
+                    ),
+                    "required" to listOf("quote", "page")
+                )
+            )
+        ),
+        com.example.zoterohelpernative.data.OpenAIToolDef(
+            function = com.example.zoterohelpernative.data.OpenAIFunctionDef(
+                name = "save_note",
+                description = "Salva una nota permanente su Zotero allegata a questo documento. " +
+                    "Usala quando l'utente chiede di salvare un riassunto, una sintesi o degli appunti sul documento.",
+                parameters = mapOf(
+                    "type" to "object",
+                    "properties" to mapOf(
+                        "content_html" to mapOf(
+                            "type" to "string",
+                            "description" to "Contenuto della nota in HTML semplice: <h1>, <h2>, <p>, <b>, <i>, <ul>, <li>, <blockquote>. " +
+                                "Inizia con un titolo <h1>."
+                        )
+                    ),
+                    "required" to listOf("content_html")
+                )
+            )
+        )
+    )
 
     private fun appendChatError(message: String) {
         _state.update {
@@ -1205,7 +1447,9 @@ class ReaderViewModel(
                         _state.update { it.copy(isLoadingPdf = false, pdfError = "Errore download da WebDAV.") }
                         return@launch
                     }
-                    ZipUtils.extractPdfFromZip(zipFile, extractDir)
+                    val extracted = ZipUtils.extractPdfFromZip(zipFile, extractDir)
+                    zipFile.delete() // the extracted PDF is what we cache, no need to keep the archive
+                    extracted
                 }
 
                 if (pdfFile == null) {

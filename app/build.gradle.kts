@@ -99,4 +99,7 @@ dependencies {
 
   // PDF
   implementation(libs.mupdf.fitz)
+
+  // Real backdrop blur (liquid glass)
+  implementation(libs.haze)
 }

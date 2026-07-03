@@ -44,6 +44,14 @@ fun ReaderSidebar(
     chatMessages: List<com.example.zoterohelpernative.ui.ChatMessage> = emptyList(),
     isChatSending: Boolean = false,
     geminiKeySet: Boolean = false,
+    nvidiaKeySet: Boolean = false,
+    chatProvider: String = "gemini",
+    nvidiaModels: List<String> = emptyList(),
+    selectedNvidiaModel: String = "",
+    isLoadingNvidiaModels: Boolean = false,
+    onProviderChange: (String) -> Unit = {},
+    onModelChange: (String) -> Unit = {},
+    onRefreshModels: () -> Unit = {},
     onSendChatMessage: (String) -> Unit = {},
     onClearChat: () -> Unit = {},
     searchResults: List<com.example.zoterohelpernative.pdf.SearchHit> = emptyList(),
@@ -280,6 +288,14 @@ fun ReaderSidebar(
                                 messages = chatMessages,
                                 isSending = isChatSending,
                                 geminiKeySet = geminiKeySet,
+                                nvidiaKeySet = nvidiaKeySet,
+                                chatProvider = chatProvider,
+                                nvidiaModels = nvidiaModels,
+                                selectedNvidiaModel = selectedNvidiaModel,
+                                isLoadingNvidiaModels = isLoadingNvidiaModels,
+                                onProviderChange = onProviderChange,
+                                onModelChange = onModelChange,
+                                onRefreshModels = onRefreshModels,
                                 onSendMessage = onSendChatMessage
                             )
                         }
@@ -406,6 +422,14 @@ private fun ChatPanel(
     messages: List<com.example.zoterohelpernative.ui.ChatMessage>,
     isSending: Boolean,
     geminiKeySet: Boolean,
+    nvidiaKeySet: Boolean = false,
+    chatProvider: String = "gemini",
+    nvidiaModels: List<String> = emptyList(),
+    selectedNvidiaModel: String = "",
+    isLoadingNvidiaModels: Boolean = false,
+    onProviderChange: (String) -> Unit = {},
+    onModelChange: (String) -> Unit = {},
+    onRefreshModels: () -> Unit = {},
     onSendMessage: (String) -> Unit
 ) {
     var inputText by remember { mutableStateOf("") }
@@ -417,11 +441,110 @@ private fun ChatPanel(
         }
     }
 
+    val chatReady = if (chatProvider == "nvidia") nvidiaKeySet else geminiKeySet
+
     Column(modifier = Modifier.fillMaxSize()) {
-        if (!geminiKeySet) {
+        // Provider + model selector
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilterChip(
+                selected = chatProvider == "gemini",
+                onClick = { onProviderChange("gemini") },
+                label = { Text("Gemini", style = MaterialTheme.typography.labelMedium) }
+            )
+            FilterChip(
+                selected = chatProvider == "nvidia",
+                onClick = { onProviderChange("nvidia") },
+                label = { Text("NVIDIA", style = MaterialTheme.typography.labelMedium) }
+            )
+
+            if (chatProvider == "nvidia") {
+                var modelMenuOpen by remember { mutableStateOf(false) }
+                Box(modifier = Modifier.weight(1f)) {
+                    Surface(
+                        color = Color(0x26FFFFFF),
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                modelMenuOpen = true
+                                onRefreshModels() // self-updating: refetch on every open
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = selectedNvidiaModel.ifBlank { "Scegli modello…" },
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (isLoadingNvidiaModels) {
+                                CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp, color = Color(0xFF76B900))
+                            } else {
+                                Icon(Icons.Outlined.ExpandMore, contentDescription = "Modelli", tint = Color(0xB3FFFFFF), modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = modelMenuOpen,
+                        onDismissRequest = { modelMenuOpen = false },
+                        modifier = Modifier.heightIn(max = 420.dp).width(300.dp)
+                    ) {
+                        var modelFilter by remember { mutableStateOf("") }
+                        OutlinedTextField(
+                            value = modelFilter,
+                            onValueChange = { modelFilter = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            singleLine = true,
+                            placeholder = { Text("Filtra modelli…") },
+                            textStyle = MaterialTheme.typography.bodySmall
+                        )
+                        val filtered = nvidiaModels.filter {
+                            modelFilter.isBlank() || it.contains(modelFilter.trim(), ignoreCase = true)
+                        }
+                        if (filtered.isEmpty()) {
+                            DropdownMenuItem(
+                                text = { Text(if (nvidiaModels.isEmpty()) "Nessun modello (controlla la API key)" else "Nessun modello corrispondente") },
+                                enabled = false,
+                                onClick = {}
+                            )
+                        }
+                        filtered.forEach { modelId ->
+                            DropdownMenuItem(
+                                text = { Text(modelId, style = MaterialTheme.typography.bodySmall) },
+                                leadingIcon = {
+                                    if (modelId == selectedNvidiaModel) Icon(Icons.Outlined.Check, contentDescription = null)
+                                },
+                                onClick = {
+                                    onModelChange(modelId)
+                                    modelMenuOpen = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!chatReady) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
                 Text(
-                    text = "Per chattare con l'AI sul documento, inserisci la tua API key di Gemini nelle Impostazioni.",
+                    text = if (chatProvider == "nvidia")
+                        "Per usare i modelli NVIDIA, inserisci la tua API key di build.nvidia.com nelle Impostazioni."
+                    else
+                        "Per chattare con l'AI sul documento, inserisci la tua API key di Gemini nelle Impostazioni.",
                     color = Color.White.copy(alpha = 0.6f),
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -506,7 +629,7 @@ private fun ChatPanel(
         }
 
         // Input row
-        if (geminiKeySet) {
+        if (chatReady) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

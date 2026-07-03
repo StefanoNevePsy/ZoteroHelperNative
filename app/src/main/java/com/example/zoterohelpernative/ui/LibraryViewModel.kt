@@ -151,6 +151,8 @@ class LibraryViewModel(
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             try {
+                // A manual refresh must also refetch item children (notes/attachments)
+                fetchedChildrenSet.clear()
                 zoteroRepository.sync()
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -249,14 +251,32 @@ class LibraryViewModel(
 
         _state.update { it.copy(items = updatedItems, activeItem = updatedItem) }
 
-        // Note: Actual API update would be done here via apiService.updateItem(...)
-        // We'll leave the optimistic UI for now as it makes the app feel snappy!
         viewModelScope.launch {
             try {
                 val apiKey = settingsRepository.zoteroApiKey.firstOrNull()
                 val userId = settingsRepository.zoteroUserId.firstOrNull()
                 if (!apiKey.isNullOrEmpty() && !userId.isNullOrEmpty()) {
-                    apiService.updateItem(userId, updatedItem.key, apiKey, itemData = updatedItemData)
+                    val response = apiService.updateItem(userId, updatedItem.key, apiKey, itemData = updatedItemData)
+                    // Track the new version: without it the next PATCH on this item
+                    // fails with 412 and the change silently never reaches Zotero
+                    if (response.isSuccessful) {
+                        response.headers()["Last-Modified-Version"]?.toLongOrNull()?.let { newVersion ->
+                            _state.update { s ->
+                                s.copy(
+                                    items = s.items.map { existing ->
+                                        if (existing.key == updatedItem.key) {
+                                            existing.copy(version = newVersion, data = existing.data.copy(version = newVersion))
+                                        } else existing
+                                    },
+                                    activeItem = s.activeItem?.let { active ->
+                                        if (active.key == updatedItem.key) {
+                                            active.copy(version = newVersion, data = active.data.copy(version = newVersion))
+                                        } else active
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

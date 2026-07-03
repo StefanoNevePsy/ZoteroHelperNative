@@ -23,6 +23,9 @@ class SettingsRepository(private val context: Context) {
         val WEBDAV_USER = stringPreferencesKey("webdav_user")
         val WEBDAV_PASS = stringPreferencesKey("webdav_pass")
         val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
+        val NVIDIA_API_KEY = stringPreferencesKey("nvidia_api_key")
+        val CHAT_PROVIDER = stringPreferencesKey("chat_provider") // "gemini" | "nvidia"
+        val NVIDIA_MODEL = stringPreferencesKey("nvidia_model")
         val ACTIVE_PALETTE_ID = stringPreferencesKey("active_palette_id")
         val CUSTOM_PALETTES = stringPreferencesKey("custom_palettes")
         val PEN_HIGHLIGHT_ONLY = androidx.datastore.preferences.core.booleanPreferencesKey("pen_highlight_only")
@@ -41,6 +44,9 @@ class SettingsRepository(private val context: Context) {
     val webdavUser: Flow<String?> = context.dataStore.data.map { it[WEBDAV_USER] }
     val webdavPass: Flow<String?> = context.dataStore.data.map { it[WEBDAV_PASS] }
     val geminiApiKey: Flow<String?> = context.dataStore.data.map { it[GEMINI_API_KEY] }
+    val nvidiaApiKey: Flow<String?> = context.dataStore.data.map { it[NVIDIA_API_KEY] }
+    val chatProvider: Flow<String> = context.dataStore.data.map { it[CHAT_PROVIDER] ?: "gemini" }
+    val nvidiaModel: Flow<String?> = context.dataStore.data.map { it[NVIDIA_MODEL] }
     val activePaletteId: Flow<String?> = context.dataStore.data.map { it[ACTIVE_PALETTE_ID] }
     
     val customPalettes: Flow<Map<String, Palette>> = context.dataStore.data.map { prefs ->
@@ -168,6 +174,24 @@ class SettingsRepository(private val context: Context) {
     suspend fun saveGeminiApiKey(apiKey: String) {
         context.dataStore.edit { preferences ->
             preferences[GEMINI_API_KEY] = apiKey
+        }
+    }
+
+    suspend fun saveNvidiaApiKey(apiKey: String) {
+        context.dataStore.edit { preferences ->
+            preferences[NVIDIA_API_KEY] = apiKey
+        }
+    }
+
+    suspend fun saveChatProvider(provider: String) {
+        context.dataStore.edit { preferences ->
+            preferences[CHAT_PROVIDER] = provider
+        }
+    }
+
+    suspend fun saveNvidiaModel(model: String) {
+        context.dataStore.edit { preferences ->
+            preferences[NVIDIA_MODEL] = model
         }
     }
 

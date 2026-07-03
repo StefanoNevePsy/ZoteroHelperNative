@@ -465,7 +465,7 @@ fun PdfPageView(
         LaunchedEffect(pan, zoom, lastGestureEndTime) {
             if (lastGestureEndTime > 0) {
                 kotlinx.coroutines.delay(300)
-                if (displaySize.width > 0 && displaySize.height > 0) {
+                if (displaySize.width > 0 && displaySize.height > 0 && pdfNativeWidth > 0f && pdfNativeHeight > 0f) {
                     val renderScale = minOf(displaySize.width.toFloat() / pdfNativeWidth, displaySize.height.toFloat() / pdfNativeHeight)
                     val renderedWidth = pdfNativeWidth * renderScale
                     val renderedHeight = pdfNativeHeight * renderScale

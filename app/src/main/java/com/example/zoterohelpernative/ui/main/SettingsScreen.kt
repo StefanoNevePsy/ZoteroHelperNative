@@ -32,6 +32,7 @@ import com.example.zoterohelpernative.ui.components.BackgroundCanvas
 import com.example.zoterohelpernative.ui.components.GlassSurface
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.automirrored.outlined.*
+import dev.chrisbanes.haze.hazeSource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,8 +54,13 @@ fun SettingsScreen(
         unfocusedLabelColor = Color(0xB3FFFFFF)
     )
 
+    val hazeState = remember { dev.chrisbanes.haze.HazeState() }
+
+    androidx.compose.runtime.CompositionLocalProvider(
+        com.example.zoterohelpernative.ui.components.LocalHazeState provides hazeState
+    ) {
     Box(modifier = modifier.fillMaxSize()) {
-        BackgroundCanvas(modifier = Modifier.fillMaxSize())
+        BackgroundCanvas(modifier = Modifier.fillMaxSize().hazeSource(hazeState))
 
         Scaffold(
             containerColor = Color.Transparent,
@@ -164,9 +170,9 @@ fun SettingsScreen(
                         color = Color(0x1A000000)
                     ) {
                         Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Text("AI (Gemini)", style = MaterialTheme.typography.titleMedium, color = Color(0xFFC084FC), fontWeight = FontWeight.Bold)
+                            Text("AI (Gemini & NVIDIA)", style = MaterialTheme.typography.titleMedium, color = Color(0xFFC084FC), fontWeight = FontWeight.Bold)
                             Text(
-                                "Abilita la chat AI sui documenti nel lettore. Ottieni una API key gratuita da Google AI Studio (aistudio.google.com).",
+                                "Abilita la chat AI sui documenti nel lettore. Gemini: API key gratuita da Google AI Studio (aistudio.google.com). NVIDIA: API key da build.nvidia.com; i modelli disponibili si aggiornano da soli nel selettore della chat.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xB3FFFFFF)
                             )
@@ -174,6 +180,15 @@ fun SettingsScreen(
                                 value = state.geminiApiKey,
                                 onValueChange = viewModel::updateGeminiApiKey,
                                 label = { Text("Gemini API Key") },
+                                singleLine = true,
+                                visualTransformation = PasswordVisualTransformation(),
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = textFieldColors
+                            )
+                            OutlinedTextField(
+                                value = state.nvidiaApiKey,
+                                onValueChange = viewModel::updateNvidiaApiKey,
+                                label = { Text("NVIDIA API Key (build.nvidia.com)") },
                                 singleLine = true,
                                 visualTransformation = PasswordVisualTransformation(),
                                 modifier = Modifier.fillMaxWidth(),
@@ -481,5 +496,6 @@ fun SettingsScreen(
                 }
             }
         }
+    }
     }
 }

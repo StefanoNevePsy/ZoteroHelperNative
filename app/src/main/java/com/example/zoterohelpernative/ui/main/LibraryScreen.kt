@@ -33,6 +33,9 @@ import com.example.zoterohelpernative.ui.components.ItemDetailsPanel
 import com.example.zoterohelpernative.ui.components.GlassSurface
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.automirrored.outlined.*
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
+import com.example.zoterohelpernative.ui.components.LocalHazeState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,10 +47,13 @@ fun LibraryScreen(
 ) {
     val state by viewModel.state.collectAsState()
     var isSidebarOpen by remember { mutableStateOf(true) }
+    val hazeState = remember { HazeState() }
 
+    CompositionLocalProvider(LocalHazeState provides hazeState) {
     Box(modifier = modifier.fillMaxSize()) {
-        // Vibrant Glassmorphism Base Background
-        BackgroundCanvas()
+        // Vibrant Glassmorphism Base Background — the haze source every glass
+        // panel on this screen refracts
+        BackgroundCanvas(modifier = Modifier.fillMaxSize().hazeSource(hazeState))
 
         Scaffold(
             containerColor = Color.Transparent, // Let the canvas show through
@@ -224,6 +230,7 @@ fun LibraryScreen(
                 }
             }
         }
+    }
     }
 }
 

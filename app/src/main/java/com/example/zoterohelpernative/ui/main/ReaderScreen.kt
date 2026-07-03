@@ -64,6 +64,9 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
+import com.example.zoterohelpernative.ui.components.LocalHazeState
 
 @Composable
 fun ReaderScreen(
@@ -93,17 +96,20 @@ fun ReaderScreen(
         viewModel.loadDocument(itemKey, context.cacheDir)
     }
 
+    val hazeState = remember { HazeState() }
+
+    CompositionLocalProvider(LocalHazeState provides hazeState) {
     Box(modifier = modifier.fillMaxSize()) {
         if (state.isLoadingPdf) {
             Box(modifier = Modifier.fillMaxSize()) {
-                com.example.zoterohelpernative.ui.components.BackgroundCanvas(modifier = Modifier.fillMaxSize())
+                com.example.zoterohelpernative.ui.components.BackgroundCanvas(modifier = Modifier.fillMaxSize().hazeSource(hazeState))
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Color(0xFF60A5FA))
                 }
             }
         } else if (state.pdfError != null) {
             Box(modifier = Modifier.fillMaxSize()) {
-                com.example.zoterohelpernative.ui.components.BackgroundCanvas(modifier = Modifier.fillMaxSize())
+                com.example.zoterohelpernative.ui.components.BackgroundCanvas(modifier = Modifier.fillMaxSize().hazeSource(hazeState))
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     com.example.zoterohelpernative.ui.components.GlassSurface(color = Color(0x33FF0000)) {
                         Text(
@@ -153,6 +159,7 @@ fun ReaderScreen(
             },
             modifier = Modifier
                 .fillMaxSize()
+                .hazeSource(hazeState)
                 .pointerInput(Unit) {
                     coroutineScope {
                         launch {
@@ -499,6 +506,14 @@ fun ReaderScreen(
             chatMessages = state.chatMessages,
             isChatSending = state.isChatSending,
             geminiKeySet = state.geminiKeySet,
+            nvidiaKeySet = state.nvidiaKeySet,
+            chatProvider = state.chatProvider,
+            nvidiaModels = state.nvidiaModels,
+            selectedNvidiaModel = state.selectedNvidiaModel,
+            isLoadingNvidiaModels = state.isLoadingNvidiaModels,
+            onProviderChange = { viewModel.setChatProvider(it) },
+            onModelChange = { viewModel.setNvidiaModel(it) },
+            onRefreshModels = { viewModel.refreshNvidiaModels() },
             onSendChatMessage = { viewModel.sendChatMessage(it) },
             onClearChat = { viewModel.clearChat() },
             searchResults = state.searchResults,
@@ -533,14 +548,18 @@ fun ReaderScreen(
             )
         }
 
-        // Paging Controls Overlay
-        Row(
+        // Paging Controls Overlay (liquid glass pill over the PDF)
+        GlassSurface(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 32.dp)
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
-                .background(androidx.compose.ui.graphics.Color(0xAA000000))
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(bottom = 32.dp),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+            color = Color(0x66101623),
+            borderColor = Color(0x40FFFFFF),
+            blurRadius = 20.dp
+        ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
@@ -561,6 +580,7 @@ fun ReaderScreen(
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Successiva", tint = androidx.compose.ui.graphics.Color.White)
             }
         }
+        } // close paging GlassSurface
 
         } // close else
 
@@ -585,5 +605,6 @@ fun ReaderScreen(
                 }
             }
         }
+    }
     }
 }
