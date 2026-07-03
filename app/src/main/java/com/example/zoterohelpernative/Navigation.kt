@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -39,7 +40,40 @@ fun MainNavigation() {
   }
   val zoteroRepository = remember { ZoteroRepository(database, settingsRepository) }
 
-  val libraryViewModel = remember { LibraryViewModel(settingsRepository, zoteroRepository) }
+  // Push queued offline changes as soon as connectivity comes back
+  val syncScope = androidx.compose.runtime.rememberCoroutineScope()
+  androidx.compose.runtime.DisposableEffect(Unit) {
+    val connectivityManager = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+        as android.net.ConnectivityManager
+    val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+      override fun onAvailable(network: android.net.Network) {
+        syncScope.launch {
+          try {
+            zoteroRepository.sync()
+          } catch (e: Exception) {
+            e.printStackTrace()
+          }
+        }
+      }
+    }
+    val request = android.net.NetworkRequest.Builder()
+        .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        .build()
+    try {
+      connectivityManager.registerNetworkCallback(request, callback)
+    } catch (e: Exception) {
+      e.printStackTrace()
+    }
+    onDispose {
+      try {
+        connectivityManager.unregisterNetworkCallback(callback)
+      } catch (e: Exception) {
+        e.printStackTrace()
+      }
+    }
+  }
+
+  val libraryViewModel = remember { LibraryViewModel(settingsRepository, zoteroRepository, context.cacheDir) }
   val readerViewModel = remember { ReaderViewModel(settingsRepository, zoteroRepository) }
   val settingsViewModel = remember { SettingsViewModel(settingsRepository) }
 

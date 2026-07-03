@@ -882,7 +882,18 @@ class ReaderViewModel(
             syncMutex.withLock {
                 // Re-read from state: a previous sync may have assigned key/version
                 val current = _state.value.annotations.find { it.key == itemData.key } ?: itemData
-                val payload = sanitizeForWrite(current)
+                var payload = sanitizeForWrite(current)
+
+                // The periodic sync may already have created this annotation while the
+                // reader still holds a version-0 copy: adopt the known version instead
+                // of creating a duplicate on the server.
+                if (payload.version == 0L) {
+                    zoteroRepository?.getLocalVersion(payload.key)?.takeIf { it > 0 }?.let { known ->
+                        payload = payload.copy(version = known)
+                        updateLocalAnnotation(payload.key) { it.copy(version = known) }
+                    }
+                }
+
                 try {
                     val apiKey = settingsRepository.zoteroApiKey.firstOrNull()
                     val userId = settingsRepository.zoteroUserId.firstOrNull()
@@ -1513,117 +1524,148 @@ class ReaderViewModel(
 
                 // The itemKey passed from the UI IS the attachment key!
                 val attachmentKey = itemKey
-
-                // 1.5 Attachment metadata: parent item (for AI notes) and remote md5
-                // (to invalidate the cache when the PDF was replaced on Zotero)
-                var remoteMd5: String? = null
-                try {
-                    val res = apiService.getItems(userId, apiKey, itemKey = attachmentKey)
-                    val attachmentData = res.body()?.firstOrNull()?.data
-                    currentParentItemKey = attachmentData?.parentItem
-                    remoteMd5 = attachmentData?.md5
-                } catch (e: Exception) {
-                    e.printStackTrace() // offline: the cache decision falls back to "use it"
-                }
-
-                // 2./3. Reuse the cached PDF when present and still current,
-                // otherwise download from WebDAV and extract the ZIP
                 val extractDir = File(cacheDir, "extracted_$attachmentKey")
-                var cachedPdf = extractDir.listFiles()
+                val cachedPdf = extractDir.listFiles()
                     ?.firstOrNull { it.isFile && it.extension.equals("pdf", ignoreCase = true) && it.length() > 0 }
 
-                if (cachedPdf != null && remoteMd5 != null) {
-                    val storedMd5 = settingsRepository.pdfMd5Map.firstOrNull()?.get(attachmentKey)
-                    if (storedMd5 != null && storedMd5 != remoteMd5) {
-                        extractDir.deleteRecursively()
-                        cachedPdf = null
-                    }
-                }
+                if (cachedPdf != null) {
+                    // ---- Instant path: open from the cache, refresh in background ----
+                    val cachedAnnotations = zoteroRepository?.getCachedAnnotations(attachmentKey) ?: emptyList()
+                    _state.update { it.copy(annotations = cachedAnnotations) }
 
-                val pdfFile = if (cachedPdf != null) {
-                    cachedPdf
+                    if (!openPdf(cachedPdf, attachmentKey)) return@launch
+
+                    viewModelScope.launch { refreshAnnotationsFromServer(userId, apiKey, attachmentKey) }
+                    refreshLibraryTags(userId, apiKey)
+                    viewModelScope.launch { checkForUpdatedPdf(userId, apiKey, attachmentKey, cacheDir, extractDir) }
                 } else {
+                    // ---- First open: the network is required ----
+                    var remoteMd5: String? = null
+                    try {
+                        val res = apiService.getItems(userId, apiKey, itemKey = attachmentKey)
+                        val attachmentData = res.body()?.firstOrNull()?.data
+                        currentParentItemKey = attachmentData?.parentItem
+                        remoteMd5 = attachmentData?.md5
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+
                     val zipFile = webDavClient.downloadAttachment(webDavUrl, webDavUser, webDavPass, attachmentKey, cacheDir)
                     if (zipFile == null) {
-                        _state.update { it.copy(isLoadingPdf = false, pdfError = "Errore download da WebDAV.") }
+                        _state.update { it.copy(isLoadingPdf = false, pdfError = "Errore download da WebDAV (documento non in cache e rete assente?).") }
                         return@launch
                     }
-                    val extracted = ZipUtils.extractPdfFromZip(zipFile, extractDir)
+                    val pdfFile = ZipUtils.extractPdfFromZip(zipFile, extractDir)
                     zipFile.delete() // the extracted PDF is what we cache, no need to keep the archive
                     remoteMd5?.let { settingsRepository.savePdfMd5(attachmentKey, it) }
-                    extracted
-                }
 
-                if (pdfFile == null) {
-                    _state.update { it.copy(isLoadingPdf = false, pdfError = "Il file ZIP non conteneva alcun PDF.") }
-                    return@launch
-                }
-
-                // 3.5 Fetch existing annotations for this attachment (paginated),
-                // falling back to the local cache when offline
-                try {
-                    val remoteAnnotations = mutableListOf<ItemData>()
-                    var fetchOk = true
-                    var start = 0
-                    while (true) {
-                        val annotationsResponse = apiService.getItemChildren(userId, attachmentKey, apiKey, start = start)
-                        if (!annotationsResponse.isSuccessful) { fetchOk = false; break }
-                        val page = annotationsResponse.body() ?: emptyList()
-                        remoteAnnotations += page
-                            .filter { it.data.itemType == "annotation" }
-                            .map { it.data }
-                        if (page.size < 100 || start >= 5000) break
-                        start += 100
+                    if (pdfFile == null) {
+                        _state.update { it.copy(isLoadingPdf = false, pdfError = "Il file ZIP non conteneva alcun PDF.") }
+                        return@launch
                     }
 
-                    if (fetchOk) {
-                        // Merge annotations still waiting to be synced, then refresh the cache
-                        val pending = zoteroRepository?.getPendingAnnotations(attachmentKey) ?: emptyList()
-                        val pendingKeys = pending.map { it.key }.toSet()
-                        val merged = remoteAnnotations.filter { it.key !in pendingKeys } + pending
-                        _state.update { it.copy(annotations = merged) }
-                        zoteroRepository?.saveLocalAnnotations(remoteAnnotations.filter { it.key !in pendingKeys }, dirty = false)
-                    } else {
-                        val cached = zoteroRepository?.getCachedAnnotations(attachmentKey) ?: emptyList()
-                        _state.update { it.copy(annotations = cached) }
-                        if (cached.isNotEmpty()) {
-                            setSyncError("Offline: mostro le annotazioni salvate sul dispositivo.")
-                        }
-                    }
-
-                    // Library tags load in parallel: they must not delay the PDF
+                    refreshAnnotationsFromServer(userId, apiKey, attachmentKey)
                     refreshLibraryTags(userId, apiKey)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    // Offline: use whatever is cached locally
-                    val cached = zoteroRepository?.getCachedAnnotations(attachmentKey) ?: emptyList()
-                    _state.update { it.copy(annotations = cached) }
-                    if (cached.isNotEmpty()) {
-                        setSyncError("Offline: mostro le annotazioni salvate sul dispositivo.")
-                    }
+                    openPdf(pdfFile, attachmentKey)
                 }
-
-                // 4. Load into MuPDF
-                if (pdfEngine.loadDocument(pdfFile)) {
-                    // Resume from the last read page, if any
-                    val savedPage = settingsRepository.lastPageMap.firstOrNull()?.get(attachmentKey) ?: 0
-                    val startPage = savedPage.coerceIn(0, (pdfEngine.pageCount - 1).coerceAtLeast(0))
-                    _state.update { it.copy(numPages = pdfEngine.pageCount, currentPage = startPage, isLoadingPdf = false) }
-                    renderCurrentPage()
-                    // Table of contents, loaded off the critical path
-                    viewModelScope.launch {
-                        _state.update { it.copy(tocEntries = pdfEngine.getOutline()) }
-                    }
-                } else {
-                    _state.update { it.copy(isLoadingPdf = false, pdfError = "Impossibile aprire il PDF.") }
-                }
-
             } catch (e: Exception) {
                 e.printStackTrace()
                 _state.update { it.copy(isLoadingPdf = false, pdfError = e.localizedMessage) }
             }
         }
     }
+
+    private suspend fun openPdf(pdfFile: File, attachmentKey: String): Boolean {
+        return if (pdfEngine.loadDocument(pdfFile)) {
+            // Resume from the last read page, if any
+            val savedPage = settingsRepository.lastPageMap.firstOrNull()?.get(attachmentKey) ?: 0
+            val startPage = savedPage.coerceIn(0, (pdfEngine.pageCount - 1).coerceAtLeast(0))
+            _state.update { it.copy(numPages = pdfEngine.pageCount, currentPage = startPage, isLoadingPdf = false) }
+            renderCurrentPage()
+            // Table of contents, loaded off the critical path
+            viewModelScope.launch {
+                _state.update { it.copy(tocEntries = pdfEngine.getOutline()) }
+            }
+            true
+        } else {
+            _state.update { it.copy(isLoadingPdf = false, pdfError = "Impossibile aprire il PDF.") }
+            false
+        }
+    }
+
+    /**
+     * Fetches the annotations from Zotero and reconciles them with local state:
+     * pending offline edits win over their server copies, offline deletions stay
+     * hidden, and annotations created in the reader meanwhile are preserved.
+     * On network failure the currently shown (cached) annotations stay in place.
+     */
+    private suspend fun refreshAnnotationsFromServer(userId: String, apiKey: String, attachmentKey: String) {
+        try {
+            val remoteAnnotations = mutableListOf<ItemData>()
+            var start = 0
+            while (true) {
+                val response = apiService.getItemChildren(userId, attachmentKey, apiKey, start = start)
+                if (!response.isSuccessful) return
+                val page = response.body() ?: emptyList()
+                remoteAnnotations += page
+                    .filter { it.data.itemType == "annotation" }
+                    .map { it.data }
+                if (page.size < 100 || start >= 5000) break
+                start += 100
+            }
+
+            val pending = zoteroRepository?.getPendingAnnotations(attachmentKey) ?: emptyList()
+            val pendingKeys = pending.map { it.key }.toSet()
+            val deletedKeys = zoteroRepository?.getPendingDeletionKeys(attachmentKey) ?: emptySet()
+            val remoteClean = remoteAnnotations.filter { it.key !in pendingKeys && it.key !in deletedKeys }
+
+            _state.update { s ->
+                // Anything created in the reader meanwhile and not yet synced
+                val liveUnsynced = s.annotations.filter { local ->
+                    local.version == 0L && local.key !in pendingKeys &&
+                        remoteClean.none { it.key == local.key }
+                }
+                s.copy(annotations = remoteClean + pending + liveUnsynced)
+            }
+            zoteroRepository?.saveLocalAnnotations(remoteClean, dirty = false)
+        } catch (e: Exception) {
+            e.printStackTrace() // offline: the cached annotations stay in place
+        }
+    }
+
+    /**
+     * Compares the attachment's md5 with the cached copy; when the PDF was
+     * replaced on Zotero the new version is downloaded in the background and
+     * used at the next open.
+     */
+    private suspend fun checkForUpdatedPdf(userId: String, apiKey: String, attachmentKey: String, cacheDir: File, extractDir: File) {
+        try {
+            val res = apiService.getItems(userId, apiKey, itemKey = attachmentKey)
+            val attachmentData = res.body()?.firstOrNull()?.data ?: return
+            currentParentItemKey = attachmentData.parentItem
+            val remoteMd5 = attachmentData.md5 ?: return
+            val storedMd5 = settingsRepository.pdfMd5Map.firstOrNull()?.get(attachmentKey)
+
+            if (storedMd5 == null) {
+                settingsRepository.savePdfMd5(attachmentKey, remoteMd5)
+                return
+            }
+            if (storedMd5 == remoteMd5) return
+
+            val webDavUrl = settingsRepository.webdavUrl.firstOrNull() ?: return
+            val webDavUser = settingsRepository.webdavUser.firstOrNull()
+            val webDavPass = settingsRepository.webdavPass.firstOrNull()
+            val zipFile = webDavClient.downloadAttachment(webDavUrl, webDavUser, webDavPass, attachmentKey, cacheDir) ?: return
+            extractDir.deleteRecursively()
+            ZipUtils.extractPdfFromZip(zipFile, extractDir)
+            zipFile.delete()
+            settingsRepository.savePdfMd5(attachmentKey, remoteMd5)
+            setSyncError("È disponibile una versione aggiornata del PDF: riapri il documento per vederla.")
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
 
     private fun refreshLibraryTags(userId: String, apiKey: String) {
         viewModelScope.launch {

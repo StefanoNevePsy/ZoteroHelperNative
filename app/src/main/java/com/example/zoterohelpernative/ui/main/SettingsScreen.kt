@@ -210,6 +210,22 @@ fun SettingsScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xB3FFFFFF)
                             )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Scarica automaticamente per l'offline", color = Color.White, fontWeight = FontWeight.SemiBold)
+                                    Text("Dopo ogni sincronizzazione, pre-scarica i PDF dei documenti aperti di recente.", color = Color(0xB3FFFFFF), style = MaterialTheme.typography.bodySmall)
+                                }
+                                Switch(
+                                    checked = state.autoCachePdfs,
+                                    onCheckedChange = viewModel::updateAutoCachePdfs,
+                                    colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFFACC15), checkedTrackColor = Color(0x4DFACC15))
+                                )
+                            }
                             val context = androidx.compose.ui.platform.LocalContext.current
                             val scope = androidx.compose.runtime.rememberCoroutineScope()
                             var cacheMessage by remember { mutableStateOf<String?>(null) }

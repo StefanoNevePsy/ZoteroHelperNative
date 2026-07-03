@@ -47,6 +47,7 @@ fun ItemDetailsPanel(
     onClose: () -> Unit,
     onOpenPdf: (String) -> Unit,
     onToggleTag: (String) -> Unit,
+    isAttachmentCached: (String) -> Boolean = { false },
     modifier: Modifier = Modifier
 ) {
     GlassSurface(
@@ -368,8 +369,24 @@ fun ItemDetailsPanel(
                                 Text(
                                     text = pdf.data.filename ?: "Documento PDF",
                                     color = Color.White,
-                                    fontWeight = FontWeight.Medium
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.weight(1f)
                                 )
+                                if (isAttachmentCached(pdf.key)) {
+                                    Icon(
+                                        Icons.Outlined.OfflinePin,
+                                        contentDescription = "Disponibile offline",
+                                        tint = Color(0xFF34D399),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Outlined.CloudQueue,
+                                        contentDescription = "Non ancora scaricato",
+                                        tint = Color(0x80FFFFFF),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                         }
                     }

@@ -28,6 +28,7 @@ data class SettingsState(
     val customPalettes: Map<String, Palette> = emptyMap(),
     val penHighlightOnly: Boolean = false,
     val fingerSelectionOnly: Boolean = false,
+    val autoCachePdfs: Boolean = true,
     val toolIcons: Map<String, String> = emptyMap(),
     val isLoading: Boolean = true
 )
@@ -72,6 +73,11 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
             }
         }
         viewModelScope.launch {
+            repository.autoCachePdfs.collect { value ->
+                _state.update { it.copy(autoCachePdfs = value) }
+            }
+        }
+        viewModelScope.launch {
             repository.toolIcons.collect { icons ->
                 _state.update { it.copy(toolIcons = icons) }
             }
@@ -103,9 +109,14 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
         _state.update { it.copy(penHighlightOnly = value) }
         viewModelScope.launch { repository.savePenHighlightOnly(value) }
     }
-    fun updateFingerSelectionOnly(value: Boolean) { 
+    fun updateFingerSelectionOnly(value: Boolean) {
         _state.update { it.copy(fingerSelectionOnly = value) }
         viewModelScope.launch { repository.saveFingerSelectionOnly(value) }
+    }
+
+    fun updateAutoCachePdfs(value: Boolean) {
+        _state.update { it.copy(autoCachePdfs = value) }
+        viewModelScope.launch { repository.saveAutoCachePdfs(value) }
     }
 
     fun updateToolIcon(toolName: String, iconName: String) {

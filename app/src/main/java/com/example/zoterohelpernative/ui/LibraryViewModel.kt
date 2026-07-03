@@ -98,7 +98,8 @@ fun LibraryState.getChildrenForItem(parentKey: String): List<ZoteroItem> {
 
 class LibraryViewModel(
     private val settingsRepository: SettingsRepository,
-    private val zoteroRepository: com.example.zoterohelpernative.data.sync.ZoteroRepository
+    private val zoteroRepository: com.example.zoterohelpernative.data.sync.ZoteroRepository,
+    private val cacheDir: java.io.File? = null
 ) : ViewModel() {
     private val _state = MutableStateFlow(LibraryState())
     val state: StateFlow<LibraryState> = _state.asStateFlow()
@@ -161,11 +162,65 @@ class LibraryViewModel(
                 // A manual refresh must also refetch item children (notes/attachments)
                 fetchedChildrenSet.clear()
                 zoteroRepository.sync()
+                prefetchRecentDocuments()
             } catch (e: Exception) {
                 e.printStackTrace()
                 _state.update { it.copy(error = e.localizedMessage) }
             } finally {
                 _state.update { it.copy(isLoading = false) }
+            }
+        }
+    }
+
+    private val webDavClient = com.example.zoterohelpernative.data.WebDavClient()
+    private var prefetchJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Downloads the PDFs of the most recently opened items in the background, so
+     * documents open instantly and are available offline. Bounded per run and
+     * skippable via the 'auto cache' setting.
+     */
+    private fun prefetchRecentDocuments(maxDownloadsPerRun: Int = 10) {
+        val dir = cacheDir ?: return
+        if (prefetchJob?.isActive == true) return
+        prefetchJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                if (settingsRepository.autoCachePdfs.firstOrNull() != true) return@launch
+                val webDavUrl = settingsRepository.webdavUrl.firstOrNull() ?: return@launch
+                if (webDavUrl.isEmpty()) return@launch
+                val webDavUser = settingsRepository.webdavUser.firstOrNull()
+                val webDavPass = settingsRepository.webdavPass.firstOrNull()
+
+                val snapshot = _state.value
+                val pdfAttachments = snapshot.items.filter {
+                    it.data.itemType == "attachment" &&
+                        (it.data.contentType == "application/pdf" ||
+                            it.data.filename?.endsWith(".pdf", ignoreCase = true) == true)
+                }
+                // Most recently opened items first; never-opened ones last
+                val ordered = pdfAttachments.sortedByDescending { att ->
+                    snapshot.lastOpened[att.data.parentItem] ?: 0L
+                }
+
+                var downloads = 0
+                for (attachment in ordered) {
+                    if (downloads >= maxDownloadsPerRun) break
+                    val extractDir = java.io.File(dir, "extracted_${attachment.key}")
+                    val alreadyCached = extractDir.listFiles()
+                        ?.any { it.isFile && it.extension.equals("pdf", ignoreCase = true) && it.length() > 0 } == true
+                    if (alreadyCached) continue
+
+                    val zipFile = webDavClient.downloadAttachment(webDavUrl, webDavUser, webDavPass, attachment.key, dir)
+                        ?: continue
+                    val extracted = com.example.zoterohelpernative.utils.ZipUtils.extractPdfFromZip(zipFile, extractDir)
+                    zipFile.delete()
+                    if (extracted != null) {
+                        attachment.data.md5?.let { settingsRepository.savePdfMd5(attachment.key, it) }
+                        downloads++
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }

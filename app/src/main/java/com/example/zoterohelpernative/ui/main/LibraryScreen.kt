@@ -48,6 +48,7 @@ fun LibraryScreen(
     val state by viewModel.state.collectAsState()
     var isSidebarOpen by remember { mutableStateOf(true) }
     val hazeState = remember { HazeState() }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     CompositionLocalProvider(LocalHazeState provides hazeState) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -253,6 +254,10 @@ fun LibraryScreen(
                                 onNavigateToReader(attachmentKey)
                             },
                             onToggleTag = { viewModel.toggleTagOnActiveItem(it) },
+                            isAttachmentCached = { attachmentKey ->
+                                java.io.File(context.cacheDir, "extracted_$attachmentKey").listFiles()
+                                    ?.any { f -> f.isFile && f.extension.equals("pdf", ignoreCase = true) && f.length() > 0 } == true
+                            },
                             modifier = Modifier.width(360.dp)
                         )
                     }

@@ -111,6 +111,18 @@ class ZoteroRepository(
         database.zoteroDao().deleteItem(key)
     }
 
+    // Keys of annotations deleted offline (deletion not yet pushed): the reader
+    // must hide these even if the server still returns them
+    suspend fun getPendingDeletionKeys(parentKey: String): Set<String> = withContext(Dispatchers.IO) {
+        database.zoteroDao().getDeletedAnnotationKeys(parentKey).toSet()
+    }
+
+    // Latest version of an item known locally (the periodic sync may have pushed a
+    // creation while the reader still holds a version-0 copy)
+    suspend fun getLocalVersion(key: String): Long? = withContext(Dispatchers.IO) {
+        database.zoteroDao().getItem(key)?.takeIf { !it.isDirty || it.version > 0 }?.version
+    }
+
     suspend fun markDeletedLocally(itemData: ItemData) = withContext(Dispatchers.IO) {
         saveLocalAnnotation(itemData, dirty = true, deleted = true)
     }
