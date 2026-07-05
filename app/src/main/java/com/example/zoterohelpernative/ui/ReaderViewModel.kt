@@ -982,9 +982,20 @@ class ReaderViewModel(
 
     // ---- AI Chat (Gemini) ----
 
+    // LLM calls carry the whole document and can take minutes to answer: the
+    // default OkHttp 10s read timeout kills every real request with "timeout".
+    private val aiHttpClient by lazy {
+        okhttp3.OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(2, java.util.concurrent.TimeUnit.MINUTES)
+            .readTimeout(5, java.util.concurrent.TimeUnit.MINUTES)
+            .build()
+    }
+
     private val geminiService by lazy {
         Retrofit.Builder()
             .baseUrl("https://generativelanguage.googleapis.com/")
+            .client(aiHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(com.example.zoterohelpernative.data.GeminiApiService::class.java)
@@ -993,6 +1004,7 @@ class ReaderViewModel(
     private val nvidiaService by lazy {
         Retrofit.Builder()
             .baseUrl("https://integrate.api.nvidia.com/")
+            .client(aiHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(com.example.zoterohelpernative.data.NvidiaApiService::class.java)
@@ -1229,7 +1241,12 @@ class ReaderViewModel(
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                appendChatError("Errore di rete: ${e.localizedMessage ?: "sconosciuto"}")
+                val message = if (e is java.net.SocketTimeoutException) {
+                    "Il modello non ha risposto in tempo. Sui documenti molto lunghi può volerci qualche minuto: riprova."
+                } else {
+                    "Errore di rete: ${e.localizedMessage ?: "sconosciuto"}"
+                }
+                appendChatError(message)
             } finally {
                 _state.update { it.copy(isChatSending = false) }
             }

@@ -67,6 +67,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import com.example.zoterohelpernative.ui.components.LocalHazeState
+import androidx.compose.ui.zIndex
 
 @Composable
 fun ReaderScreen(
@@ -235,13 +236,14 @@ fun ReaderScreen(
             onClose = { if (state.radialMenuOpen) viewModel.closeRadialMenu() }
         )
 
-        // Annotation Popup
+        // Annotation Popup (above the paging pill and toggle button)
         if (state.selectedAnnotationId != null) {
             val ann = state.annotations.find { it.key == state.selectedAnnotationId }
             if (ann != null) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .zIndex(2f)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
@@ -533,7 +535,8 @@ fun ReaderScreen(
                 }
                 context.startActivity(android.content.Intent.createChooser(sendIntent, "Esporta annotazioni"))
             },
-            modifier = Modifier.fillMaxHeight().align(Alignment.CenterEnd)
+            // Top layer: nothing (paging pill, toggle, popup) may cover the sidebar
+            modifier = Modifier.fillMaxHeight().align(Alignment.CenterEnd).zIndex(3f)
         )
 
         // Top right sidebar toggle
