@@ -34,7 +34,9 @@ enum class ShapeType { RECTANGLE, ELLIPSE, POLYGON }
 data class ChatMessage(
     val role: String, // "user" or "model"
     val text: String,
-    val isError: Boolean = false
+    val isError: Boolean = false,
+    val savedAsNote: Boolean = false,
+    val isSavingNote: Boolean = false
 )
 
 data class ReaderState(
@@ -1508,6 +1510,56 @@ class ReaderViewModel(
         _state.update {
             it.copy(chatMessages = it.chatMessages + ChatMessage("model", message, isError = true))
         }
+    }
+
+    /** Saves an AI answer as a Zotero child note of the document's parent item. */
+    fun saveChatMessageAsNote(index: Int) {
+        val message = _state.value.chatMessages.getOrNull(index) ?: return
+        if (message.role != "model" || message.isError || message.savedAsNote || message.isSavingNote) return
+
+        updateChatMessage(index) { it.copy(isSavingNote = true) }
+        viewModelScope.launch {
+            try {
+                val result = executeSaveNote(mapOf("content_html" to chatTextToHtml(message.text)))
+                if (result["success"] == true) {
+                    updateChatMessage(index) { it.copy(isSavingNote = false, savedAsNote = true) }
+                } else {
+                    updateChatMessage(index) { it.copy(isSavingNote = false) }
+                    setSyncError("Salvataggio nota fallito: ${result["error"] ?: "errore sconosciuto"}")
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                updateChatMessage(index) { it.copy(isSavingNote = false) }
+                setSyncError("Salvataggio nota fallito: ${e.localizedMessage ?: "errore di rete"}")
+            }
+        }
+    }
+
+    private fun updateChatMessage(index: Int, transform: (ChatMessage) -> ChatMessage) {
+        _state.update { s ->
+            s.copy(chatMessages = s.chatMessages.mapIndexed { i, m -> if (i == index) transform(m) else m })
+        }
+    }
+
+    // Chat answers are plain text with light markdown: escape HTML, keep
+    // paragraphs/line breaks and translate **bold** so the Zotero note stays readable
+    private fun chatTextToHtml(text: String): String {
+        fun escape(s: String) = s
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+
+        val date = java.text.SimpleDateFormat("d MMMM yyyy, HH:mm", java.util.Locale.getDefault())
+            .format(java.util.Date())
+        val body = text.trim()
+            .split(Regex("\n{2,}"))
+            .joinToString("") { paragraph ->
+                val html = escape(paragraph)
+                    .replace(Regex("""\*\*(.+?)\*\*"""), "<b>$1</b>")
+                    .replace("\n", "<br/>")
+                "<p>$html</p>"
+            }
+        return "<h1>Nota AI ($date)</h1>$body"
     }
 
     fun loadDocument(itemKey: String, cacheDir: File) {

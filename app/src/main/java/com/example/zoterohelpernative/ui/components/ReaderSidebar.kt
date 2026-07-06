@@ -52,6 +52,7 @@ fun ReaderSidebar(
     onProviderChange: (String) -> Unit = {},
     onModelChange: (String) -> Unit = {},
     onRefreshModels: () -> Unit = {},
+    onSaveMessageAsNote: (Int) -> Unit = {},
     onSendChatMessage: (String) -> Unit = {},
     onClearChat: () -> Unit = {},
     searchResults: List<com.example.zoterohelpernative.pdf.SearchHit> = emptyList(),
@@ -296,6 +297,7 @@ fun ReaderSidebar(
                                 onProviderChange = onProviderChange,
                                 onModelChange = onModelChange,
                                 onRefreshModels = onRefreshModels,
+                                onSaveMessageAsNote = onSaveMessageAsNote,
                                 onSendMessage = onSendChatMessage
                             )
                         }
@@ -430,6 +432,7 @@ private fun ChatPanel(
     onProviderChange: (String) -> Unit = {},
     onModelChange: (String) -> Unit = {},
     onRefreshModels: () -> Unit = {},
+    onSaveMessageAsNote: (Int) -> Unit = {},
     onSendMessage: (String) -> Unit
 ) {
     var inputText by remember { mutableStateOf("") }
@@ -582,7 +585,7 @@ private fun ChatPanel(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
                     ) {
-                        Box(
+                        Column(
                             modifier = Modifier
                                 .widthIn(max = 240.dp)
                                 .background(
@@ -605,6 +608,51 @@ private fun ChatPanel(
                                 color = if (message.isError) Color(0xFFFCA5A5) else Color.White.copy(alpha = 0.95f),
                                 style = MaterialTheme.typography.bodyMedium
                             )
+
+                            // Save an AI answer as a Zotero child note of the document
+                            if (!isUser && !message.isError) {
+                                Row(
+                                    modifier = Modifier
+                                        .align(Alignment.End)
+                                        .padding(top = 6.dp)
+                                        .clickable(enabled = !message.savedAsNote && !message.isSavingNote) {
+                                            onSaveMessageAsNote(index)
+                                        },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    when {
+                                        message.isSavingNote -> {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(12.dp),
+                                                strokeWidth = 2.dp,
+                                                color = Color(0xFFFCD34D)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Salvataggio…", color = Color(0x99FFFFFF), style = MaterialTheme.typography.labelSmall)
+                                        }
+                                        message.savedAsNote -> {
+                                            Icon(
+                                                Icons.Outlined.CheckCircle,
+                                                contentDescription = null,
+                                                tint = Color(0xFF34D399),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Nota salvata", color = Color(0xFF34D399), style = MaterialTheme.typography.labelSmall)
+                                        }
+                                        else -> {
+                                            Icon(
+                                                Icons.Outlined.NoteAdd,
+                                                contentDescription = "Salva come nota Zotero",
+                                                tint = Color(0xFFFCD34D),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Salva come nota", color = Color(0xFFFCD34D), style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

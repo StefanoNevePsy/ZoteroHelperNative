@@ -519,6 +519,7 @@ fun ReaderScreen(
             onProviderChange = { viewModel.setChatProvider(it) },
             onModelChange = { viewModel.setNvidiaModel(it) },
             onRefreshModels = { viewModel.refreshNvidiaModels() },
+            onSaveMessageAsNote = { viewModel.saveChatMessageAsNote(it) },
             onSendChatMessage = { viewModel.sendChatMessage(it) },
             onClearChat = { viewModel.clearChat() },
             searchResults = state.searchResults,
