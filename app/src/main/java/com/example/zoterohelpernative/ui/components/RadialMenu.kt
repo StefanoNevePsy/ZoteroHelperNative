@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.automirrored.outlined.*
 import com.composables.icons.lucide.*
 import com.example.zoterohelpernative.ui.icons.IconResolver
+import com.example.zoterohelpernative.theme.AppColors
 
 fun safeParseColor(hex: String, defaultColor: Color = Color.White): Color {
     return try {
@@ -96,7 +97,7 @@ fun RadialMenuCapacitor(
                 GlassSurface(
                     modifier = Modifier.fillMaxSize(),
                     shape = CircleShape,
-                    color = Color(0x33000000), // bg-black/20
+                    color = AppColors.Glass.Dim.copy(alpha = 0.20f),
                     borderColor = Color.Transparent,
                     borderWidth = 0.dp,
                     blurRadius = 8.dp // backdrop-blur-sm
@@ -111,8 +112,8 @@ fun RadialMenuCapacitor(
                     .offset(x = (-32).dp, y = (-32).dp)
                     .size(64.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFF111827)) // bg-gray-900
-                    .border(2.dp, Color(0x33FFFFFF), CircleShape) // border-white/20
+                    .background(AppColors.Background.GlassBase) // bg-gray-900
+                    .border(2.dp, AppColors.Glass.Border, CircleShape) // border-white/20
                     .clickable {
                         if (level == "root") onClose() else onLevelChange("root")
                     },
@@ -123,7 +124,7 @@ fun RadialMenuCapacitor(
                     Box(
                         modifier = Modifier
                             .size(16.dp)
-                            .background(Color(0xFF3B82F6), CircleShape) // bg-blue-500
+                            .background(AppColors.Accent, CircleShape) // bg-blue-500
                     )
                 } else {
                     Icon(
@@ -161,15 +162,15 @@ fun RadialMenuCapacitor(
                             .size(48.dp)
                             .scale(itemScale)
                             .clip(CircleShape)
-                            .background(Color(0xCC000000)) // bg-black/80
-                            .border(1.dp, Color(0x1AFFFFFF), CircleShape) // border-white/10
+                            .background(AppColors.Glass.ChromeTint) // bg-black/80
+                            .border(1.dp, AppColors.Separator, CircleShape) // border-white/10
                             .clickable { onLevelChange(id) },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = icon,
                             contentDescription = id,
-                            tint = Color(0xFFD1D5DB), // text-gray-300
+                            tint = AppColors.Label.Secondary, // text-gray-300
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -192,7 +193,7 @@ fun RadialMenuCapacitor(
                             .scale(if (isActiveColor) itemScale * 1.1f else itemScale)
                             .clip(CircleShape)
                             .background(parsedColor)
-                            .border(if (isActiveColor) 4.dp else 0.dp, if (isActiveColor) Color(0x80FFFFFF) else Color.Transparent, CircleShape)
+                            .border(if (isActiveColor) 4.dp else 0.dp, if (isActiveColor) AppColors.Label.Tertiary else Color.Transparent, CircleShape)
                             .clickable {
                                 onColorSelect(color)
                                 onToolSelect("HIGHLIGHTER")
@@ -209,12 +210,12 @@ fun RadialMenuCapacitor(
                         .size(40.dp)
                         .scale(itemScale)
                         .clip(CircleShape)
-                        .background(Color(0xCC000000))
-                        .border(1.dp, Color(0x1AFFFFFF), CircleShape)
+                        .background(AppColors.Glass.ChromeTint)
+                        .border(1.dp, AppColors.Separator, CircleShape)
                         .clickable { onCyclePalette() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Outlined.Refresh, contentDescription = "Cycle Palette", tint = Color(0xFFD1D5DB), modifier = Modifier.size(16.dp))
+                    Icon(Icons.Outlined.Refresh, contentDescription = "Cycle Palette", tint = AppColors.Label.Secondary, modifier = Modifier.size(16.dp))
                 }
 
                 // Undo Button (150 deg)
@@ -225,12 +226,12 @@ fun RadialMenuCapacitor(
                         .size(40.dp)
                         .scale(itemScale)
                         .clip(CircleShape)
-                        .background(Color(0xCC000000))
-                        .border(1.dp, Color(0x1AFFFFFF), CircleShape)
+                        .background(AppColors.Glass.ChromeTint)
+                        .border(1.dp, AppColors.Separator, CircleShape)
                         .clickable { onUndo(); onClose() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(IconResolver.resolve(toolIcons["tool_undo"], Lucide.Undo), contentDescription = "Undo", tint = Color(0xFFD1D5DB), modifier = Modifier.size(16.dp))
+                    Icon(IconResolver.resolve(toolIcons["tool_undo"], Lucide.Undo), contentDescription = "Undo", tint = AppColors.Label.Secondary, modifier = Modifier.size(16.dp))
                 }
                 
                 // Erase Button (30 deg)
@@ -242,15 +243,15 @@ fun RadialMenuCapacitor(
                         .size(40.dp)
                         .scale(itemScale)
                         .clip(CircleShape)
-                        .background(Color(0xCC000000))
-                        .border(if (isEraser) 2.dp else 1.dp, if (isEraser) Color(0x80EF4444) else Color(0x1AFFFFFF), CircleShape)
+                        .background(AppColors.Glass.ChromeTint)
+                        .border(if (isEraser) 2.dp else 1.dp, if (isEraser) AppColors.Status.Danger.copy(alpha = 0.5f) else AppColors.Separator, CircleShape)
                         .clickable {
                             onToolSelect(if (isEraser) "HIGHLIGHTER" else "ERASER")
                             onClose()
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(IconResolver.resolve(toolIcons["tool_eraser"], Lucide.Eraser), contentDescription = "Eraser", tint = if (isEraser) Color(0xFFF87171) else Color(0xFFD1D5DB), modifier = Modifier.size(16.dp))
+                    Icon(IconResolver.resolve(toolIcons["tool_eraser"], Lucide.Eraser), contentDescription = "Eraser", tint = if (isEraser) AppColors.Status.Danger else AppColors.Label.Secondary, modifier = Modifier.size(16.dp))
                 }
                 
                 // Squared Highlight (90 deg)
@@ -261,12 +262,12 @@ fun RadialMenuCapacitor(
                         .size(40.dp)
                         .scale(itemScale)
                         .clip(CircleShape)
-                        .background(Color(0xCC000000))
-                        .border(if (squaredHighlighter) 2.dp else 1.dp, if (squaredHighlighter) Color(0x80EAB308) else Color(0x1AFFFFFF), CircleShape)
+                        .background(AppColors.Glass.ChromeTint)
+                        .border(if (squaredHighlighter) 2.dp else 1.dp, if (squaredHighlighter) AppColors.Accent.copy(alpha = 0.5f) else AppColors.Separator, CircleShape)
                         .clickable { onToggleSquared() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(IconResolver.resolve(toolIcons["tool_square"], Lucide.Square), contentDescription = "Squared", tint = if (squaredHighlighter) Color(0xFFFACC15) else Color(0xFFD1D5DB), modifier = Modifier.size(16.dp))
+                    Icon(IconResolver.resolve(toolIcons["tool_square"], Lucide.Square), contentDescription = "Squared", tint = if (squaredHighlighter) AppColors.Accent else AppColors.Label.Secondary, modifier = Modifier.size(16.dp))
                 }
                 
                 // Snap to Word (60 deg)
@@ -277,12 +278,12 @@ fun RadialMenuCapacitor(
                         .size(40.dp)
                         .scale(itemScale)
                         .clip(CircleShape)
-                        .background(Color(0xCC000000))
-                        .border(if (snapToWord) 2.dp else 1.dp, if (snapToWord) Color(0x80EAB308) else Color(0x1AFFFFFF), CircleShape)
+                        .background(AppColors.Glass.ChromeTint)
+                        .border(if (snapToWord) 2.dp else 1.dp, if (snapToWord) AppColors.Accent.copy(alpha = 0.5f) else AppColors.Separator, CircleShape)
                         .clickable { onToggleSnap() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Outlined.FormatSize, contentDescription = "Snap to Word", tint = if (snapToWord) Color(0xFFFACC15) else Color(0xFFD1D5DB), modifier = Modifier.size(16.dp))
+                    Icon(Icons.Outlined.FormatSize, contentDescription = "Snap to Word", tint = if (snapToWord) AppColors.Accent else AppColors.Label.Secondary, modifier = Modifier.size(16.dp))
                 }
                 
             } else if (level == "tools") {
@@ -306,8 +307,8 @@ fun RadialMenuCapacitor(
                             .size(56.dp)
                             .scale(itemScale)
                             .clip(CircleShape)
-                            .background(if (isActive) Color(0xFF3B82F6) else Color(0xCC000000)) // bg-blue-500 or bg-black/80
-                            .border(1.dp, if (isActive) Color(0xFF60A5FA) else Color(0x1AFFFFFF), CircleShape)
+                            .background(if (isActive) AppColors.Accent else AppColors.Glass.ChromeTint) // bg-blue-500 or bg-black/80
+                            .border(1.dp, if (isActive) AppColors.Accent else AppColors.Separator, CircleShape)
                             .clickable {
                                 if (id == "UNDO") {
                                     onUndo()
@@ -322,7 +323,7 @@ fun RadialMenuCapacitor(
                         Icon(
                             imageVector = icon,
                             contentDescription = id,
-                            tint = if (isActive) Color.White else Color(0xFFD1D5DB),
+                            tint = if (isActive) Color.White else AppColors.Label.Secondary,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -348,8 +349,8 @@ fun RadialMenuCapacitor(
                             .size(56.dp)
                             .scale(itemScale)
                             .clip(CircleShape)
-                            .background(Color(0xCC000000))
-                            .border(1.dp, if (id == "FULLSCREEN" && isFullscreen) Color(0xFF60A5FA) else Color(0x1AFFFFFF), CircleShape)
+                            .background(AppColors.Glass.ChromeTint)
+                            .border(1.dp, if (id == "FULLSCREEN" && isFullscreen) AppColors.Accent else AppColors.Separator, CircleShape)
                             .clickable {
                                 if (id == "UNDO") {
                                     onUndo()
@@ -373,7 +374,7 @@ fun RadialMenuCapacitor(
                         Icon(
                             imageVector = icon,
                             contentDescription = id,
-                            tint = Color(0xFFD1D5DB),
+                            tint = AppColors.Label.Secondary,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -399,8 +400,8 @@ fun RadialMenuCapacitor(
                              .size(56.dp)
                              .scale(itemScale)
                              .clip(CircleShape)
-                             .background(Color(0xCC000000))
-                             .border(1.dp, Color(0x1AFFFFFF), CircleShape)
+                             .background(AppColors.Glass.ChromeTint)
+                             .border(1.dp, AppColors.Separator, CircleShape)
                              .clickable {
                                  onSetPdfTheme(id)
                                  onLevelChange("view")
@@ -410,7 +411,7 @@ fun RadialMenuCapacitor(
                          Icon(
                              imageVector = icon,
                              contentDescription = id,
-                             tint = Color(0xFFD1D5DB),
+                             tint = AppColors.Label.Secondary,
                              modifier = Modifier.size(20.dp)
                          )
                      }

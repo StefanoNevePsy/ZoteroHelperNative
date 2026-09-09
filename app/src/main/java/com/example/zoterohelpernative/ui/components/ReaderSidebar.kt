@@ -21,16 +21,22 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.zoterohelpernative.data.ItemData
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.RoundedCornerShape
+import com.example.zoterohelpernative.theme.AppColors
+import com.example.zoterohelpernative.theme.Radius
+import com.example.zoterohelpernative.theme.Spacing
+import com.example.zoterohelpernative.theme.TouchTarget
 
 enum class SidebarTab(val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    TOC("Index", Icons.AutoMirrored.Outlined.List),
-    SEARCH("Search", Icons.Outlined.Search),
-    ANNOTATIONS("Annotations", Icons.Outlined.Star),
-    CHAT("Chat AI", Icons.Outlined.AutoAwesome)
+    TOC("Indice", Icons.AutoMirrored.Outlined.List),
+    SEARCH("Cerca", Icons.Outlined.Search),
+    ANNOTATIONS("Annotazioni", Icons.Outlined.Star),
+    CHAT("Chat", Icons.Outlined.AutoAwesome)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -71,15 +77,14 @@ fun ReaderSidebar(
         exit = slideOutHorizontally(targetOffsetX = { it }),
         modifier = modifier
     ) {
-        GlassSurface(
+        LiquidGlass(
             modifier = Modifier
-                .padding(end = 16.dp, top = 80.dp, bottom = 16.dp)
+                .padding(end = Spacing.l, top = 80.dp, bottom = Spacing.l)
                 .fillMaxHeight()
                 .width(320.dp),
-            color = Color(0xFA111827), // More opaque background for better contrast
-            borderColor = Color(0x33FFFFFF),
-            blurRadius = 32.dp,
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
+            variant = GlassVariant.Regular,
+            borderColor = AppColors.Glass.BorderStrong,
+            shape = RoundedCornerShape(Radius.xxl)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Header
@@ -92,8 +97,8 @@ fun ReaderSidebar(
                 ) {
                     Text(
                         text = selectedTab.title,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = Color.White
+                        style = MaterialTheme.typography.titleMedium,
+                        color = AppColors.Label.Primary
                     )
                     Row {
                         if (selectedTab == SidebarTab.CHAT && chatMessages.isNotEmpty()) {
@@ -101,7 +106,7 @@ fun ReaderSidebar(
                                 Icon(
                                     imageVector = Icons.Outlined.DeleteSweep,
                                     contentDescription = "Svuota chat",
-                                    tint = Color.White.copy(alpha = 0.7f)
+                                    tint = AppColors.Label.Secondary
                                 )
                             }
                         }
@@ -110,7 +115,7 @@ fun ReaderSidebar(
                                 Icon(
                                     imageVector = Icons.Outlined.IosShare,
                                     contentDescription = "Esporta annotazioni in Markdown",
-                                    tint = Color.White.copy(alpha = 0.7f)
+                                    tint = AppColors.Label.Secondary
                                 )
                             }
                         }
@@ -118,7 +123,7 @@ fun ReaderSidebar(
                             Icon(
                                 imageVector = Icons.Outlined.Close,
                                 contentDescription = "Close Sidebar",
-                                tint = Color.White.copy(alpha = 0.7f)
+                                tint = AppColors.Label.Secondary
                             )
                         }
                     }
@@ -129,32 +134,35 @@ fun ReaderSidebar(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    SidebarTab.values().forEach { tab ->
+                    SidebarTab.entries.forEach { tab ->
                         val isSelected = selectedTab == tab
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = TouchTarget.min)
+                                .clip(RoundedCornerShape(Radius.s))
                                 .clickable { selectedTab = tab }
-                                .padding(vertical = 8.dp)
+                                .padding(vertical = Spacing.s)
                         ) {
                             Icon(
-                                imageVector = tab.icon, 
-                                contentDescription = tab.title, 
-                                tint = if (isSelected) Color(0xFF60A5FA) else Color.White.copy(alpha = 0.5f)
+                                imageVector = tab.icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = if (isSelected) AppColors.Accent else AppColors.Label.Tertiary
                             )
-                            if (isSelected) {
-                                Box(
-                                    modifier = Modifier
-                                        .padding(top = 4.dp)
-                                        .size(4.dp)
-                                        .background(Color(0xFF60A5FA), androidx.compose.foundation.shape.CircleShape)
-                                )
-                            }
+                            Spacer(modifier = Modifier.height(Spacing.xxs))
+                            Text(
+                                text = tab.title,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isSelected) AppColors.Accent else AppColors.Label.Tertiary,
+                                maxLines = 1
+                            )
                         }
                     }
                 }
                 
-                Divider(color = Color.White.copy(alpha = 0.1f))
+                HorizontalDivider(color = AppColors.Separator)
 
                 // Content
                 Box(
@@ -166,7 +174,7 @@ fun ReaderSidebar(
                         SidebarTab.TOC -> {
                             if (tocEntries.isEmpty()) {
                                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text("Il documento non ha un indice.", color = Color.White.copy(alpha = 0.5f))
+                                    Text("Il documento non ha un indice.", color = AppColors.Label.Tertiary)
                                 }
                             } else {
                                 LazyColumn(
@@ -197,7 +205,7 @@ fun ReaderSidebar(
                                             if (entry.pageIndex >= 0) {
                                                 Text(
                                                     text = "${entry.pageIndex + 1}",
-                                                    color = Color(0xFF60A5FA),
+                                                    color = AppColors.Accent,
                                                     style = MaterialTheme.typography.labelSmall
                                                 )
                                             }
@@ -219,14 +227,14 @@ fun ReaderSidebar(
                                         .fillMaxWidth()
                                         .padding(horizontal = 12.dp, vertical = 8.dp),
                                     singleLine = true,
-                                    placeholder = { Text("Cerca nel documento…", color = Color(0x80FFFFFF)) },
-                                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = Color(0xB3FFFFFF)) },
+                                    placeholder = { Text("Cerca nel documento…", color = AppColors.Label.Placeholder) },
+                                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = AppColors.Label.Secondary) },
                                     trailingIcon = {
                                         if (isSearching) {
-                                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color(0xFF60A5FA))
+                                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = AppColors.Accent)
                                         } else if (searchInput.isNotEmpty()) {
                                             IconButton(onClick = { searchInput = ""; onSearch("") }) {
-                                                Icon(Icons.Outlined.Close, contentDescription = "Pulisci", tint = Color(0xB3FFFFFF))
+                                                Icon(Icons.Outlined.Close, contentDescription = "Pulisci", tint = AppColors.Label.Secondary)
                                             }
                                         }
                                     },
@@ -234,9 +242,9 @@ fun ReaderSidebar(
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedTextColor = Color.White,
                                         unfocusedTextColor = Color.White,
-                                        cursorColor = Color(0xFF60A5FA),
-                                        focusedBorderColor = Color(0x8060A5FA),
-                                        unfocusedBorderColor = Color(0x33FFFFFF)
+                                        cursorColor = AppColors.Accent,
+                                        focusedBorderColor = AppColors.Accent.copy(alpha = 0.6f),
+                                        unfocusedBorderColor = AppColors.Separator
                                     )
                                 )
 
@@ -244,7 +252,7 @@ fun ReaderSidebar(
                                     Text(
                                         text = if (searchResults.isEmpty()) "Nessun risultato"
                                                else "${searchResults.size} risultat${if (searchResults.size == 1) "o" else "i"}",
-                                        color = Color.White.copy(alpha = 0.5f),
+                                        color = AppColors.Label.Tertiary,
                                         style = MaterialTheme.typography.labelMedium,
                                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                                     )
@@ -257,24 +265,23 @@ fun ReaderSidebar(
                                 ) {
                                     items(searchResults.size) { index ->
                                         val hit = searchResults[index]
-                                        GlassSurface(
+                                        ContentSurface(
                                             modifier = Modifier
                                                 .fillMaxWidth()
+                                                .heightIn(min = TouchTarget.min)
                                                 .clickable { onGoToPage(hit.pageIndex) },
-                                            color = Color(0x26FFFFFF),
-                                            borderColor = Color(0x1AFFFFFF),
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                            shape = RoundedCornerShape(Radius.s)
                                         ) {
                                             Column(modifier = Modifier.padding(10.dp)) {
                                                 Text(
                                                     text = "Pagina ${hit.pageIndex + 1}",
-                                                    color = Color(0xFF60A5FA),
+                                                    color = AppColors.Accent,
                                                     style = MaterialTheme.typography.labelSmall,
                                                     fontWeight = FontWeight.Bold
                                                 )
                                                 Text(
                                                     text = hit.snippet,
-                                                    color = Color.White.copy(alpha = 0.85f),
+                                                    color = AppColors.Label.Primary,
                                                     style = MaterialTheme.typography.bodySmall,
                                                     maxLines = 3
                                                 )
@@ -304,7 +311,7 @@ fun ReaderSidebar(
                         SidebarTab.ANNOTATIONS -> {
                             if (annotations.none { it.annotationType == "highlight" || it.annotationType == "underline" }) {
                                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text("Nessuna annotazione nel documento.", color = Color.White.copy(alpha = 0.5f))
+                                    Text("Nessuna annotazione nel documento.", color = AppColors.Label.Tertiary)
                                 }
                             } else {
                                 LazyColumn(
@@ -320,7 +327,7 @@ fun ReaderSidebar(
                                     ) { ann ->
                                         val annColor = getUiColor(ann.annotationColor ?: "#ffd400")
 
-                                        GlassSurface(
+                                        ContentSurface(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clickable {
@@ -332,10 +339,9 @@ fun ReaderSidebar(
                                                         ?: ann.annotationPageLabel?.toIntOrNull()?.minus(1)
                                                     if (page != null) onGoToPage(page)
                                                 },
-                                            color = Color(0x33FFFFFF), // Lighter card over dark background
-                                            borderColor = Color(0x1AFFFFFF),
-                                            blurRadius = 16.dp,
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                            color = AppColors.Fill.Primary,
+                                            borderColor = AppColors.Separator,
+                                            shape = RoundedCornerShape(Radius.s)
                                         ) {
                                             Row(modifier = Modifier.height(IntrinsicSize.Min)) {
                                                 // Left color bar
@@ -351,7 +357,7 @@ fun ReaderSidebar(
                                                         text = "\"${ann.annotationText?.takeIf { it.isNotBlank() } ?: "..."}\"",
                                                         style = MaterialTheme.typography.bodyMedium.copy(
                                                             fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                                                            color = Color.White.copy(alpha = 0.9f)
+                                                            color = AppColors.Label.Primary
                                                         ),
                                                         modifier = Modifier.padding(bottom = if (ann.annotationComment.isNullOrBlank()) 0.dp else 8.dp)
                                                     )
@@ -370,7 +376,7 @@ fun ReaderSidebar(
                                                             style = MaterialTheme.typography.labelSmall.copy(
                                                                 fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                                                             ),
-                                                            color = Color.White.copy(alpha = 0.5f),
+                                                            color = AppColors.Label.Tertiary,
                                                             modifier = Modifier.padding(top = 4.dp)
                                                         )
                                                     }
@@ -403,7 +409,7 @@ fun ReaderSidebar(
                                                     Icon(
                                                         imageVector = Icons.Outlined.Delete,
                                                         contentDescription = "Elimina Annotazione",
-                                                        tint = Color.White.copy(alpha = 0.5f)
+                                                        tint = AppColors.Label.Tertiary
                                                     )
                                                 }
                                             }
@@ -470,10 +476,12 @@ private fun ChatPanel(
                 var modelMenuOpen by remember { mutableStateOf(false) }
                 Box(modifier = Modifier.weight(1f)) {
                     Surface(
-                        color = Color(0x26FFFFFF),
-                        shape = MaterialTheme.shapes.small,
+                        color = AppColors.Fill.Primary,
+                        shape = RoundedCornerShape(Radius.s),
                         modifier = Modifier
                             .fillMaxWidth()
+                            .heightIn(min = TouchTarget.compact)
+                            .clip(RoundedCornerShape(Radius.s))
                             .clickable {
                                 modelMenuOpen = true
                                 onRefreshModels() // self-updating: refetch on every open
@@ -492,9 +500,9 @@ private fun ChatPanel(
                                 modifier = Modifier.weight(1f)
                             )
                             if (isLoadingNvidiaModels) {
-                                CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp, color = Color(0xFF76B900))
+                                CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp, color = AppColors.Accent)
                             } else {
-                                Icon(Icons.Outlined.ExpandMore, contentDescription = "Modelli", tint = Color(0xB3FFFFFF), modifier = Modifier.size(16.dp))
+                                Icon(Icons.Outlined.ExpandMore, contentDescription = "Modelli", tint = AppColors.Label.Secondary, modifier = Modifier.size(16.dp))
                             }
                         }
                     }
@@ -548,7 +556,7 @@ private fun ChatPanel(
                         "Per usare i modelli NVIDIA, inserisci la tua API key di build.nvidia.com nelle Impostazioni."
                     else
                         "Per chattare con l'AI sul documento, inserisci la tua API key di Gemini nelle Impostazioni.",
-                    color = Color.White.copy(alpha = 0.6f),
+                    color = AppColors.Label.Secondary,
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
@@ -559,13 +567,13 @@ private fun ChatPanel(
                     Icon(
                         imageVector = Icons.Outlined.AutoAwesome,
                         contentDescription = null,
-                        tint = Color(0xFF60A5FA),
+                        tint = AppColors.Accent,
                         modifier = Modifier.size(40.dp)
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         text = "Fai una domanda sul documento: riassunti, spiegazioni, metodologia…",
-                        color = Color.White.copy(alpha = 0.6f),
+                        color = AppColors.Label.Secondary,
                         style = MaterialTheme.typography.bodyMedium,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
@@ -590,9 +598,9 @@ private fun ChatPanel(
                                 .widthIn(max = 240.dp)
                                 .background(
                                     color = when {
-                                        message.isError -> Color(0x4DEF4444)
-                                        isUser -> Color(0x4D60A5FA)
-                                        else -> Color(0x26FFFFFF)
+                                        message.isError -> AppColors.Status.Danger.copy(alpha = 0.22f)
+                                        isUser -> AppColors.Accent.copy(alpha = 0.22f)
+                                        else -> AppColors.Fill.Primary
                                     },
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(
                                         topStart = 12.dp,
@@ -605,7 +613,7 @@ private fun ChatPanel(
                         ) {
                             Text(
                                 text = message.text,
-                                color = if (message.isError) Color(0xFFFCA5A5) else Color.White.copy(alpha = 0.95f),
+                                color = if (message.isError) AppColors.Status.Danger else AppColors.Label.Primary,
                                 style = MaterialTheme.typography.bodyMedium
                             )
 
@@ -614,10 +622,13 @@ private fun ChatPanel(
                                 Row(
                                     modifier = Modifier
                                         .align(Alignment.End)
-                                        .padding(top = 6.dp)
+                                        .padding(top = Spacing.xs)
+                                        .heightIn(min = TouchTarget.compact)
+                                        .clip(RoundedCornerShape(Radius.s))
                                         .clickable(enabled = !message.savedAsNote && !message.isSavingNote) {
                                             onSaveMessageAsNote(index)
-                                        },
+                                        }
+                                        .padding(horizontal = Spacing.s),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     when {
@@ -625,30 +636,30 @@ private fun ChatPanel(
                                             CircularProgressIndicator(
                                                 modifier = Modifier.size(12.dp),
                                                 strokeWidth = 2.dp,
-                                                color = Color(0xFFFCD34D)
+                                                color = AppColors.Accent
                                             )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Salvataggio…", color = Color(0x99FFFFFF), style = MaterialTheme.typography.labelSmall)
+                                            Spacer(modifier = Modifier.width(Spacing.xs))
+                                            Text("Salvataggio…", color = AppColors.Label.Secondary, style = MaterialTheme.typography.labelSmall)
                                         }
                                         message.savedAsNote -> {
                                             Icon(
                                                 Icons.Outlined.CheckCircle,
                                                 contentDescription = null,
-                                                tint = Color(0xFF34D399),
+                                                tint = AppColors.Status.Success,
                                                 modifier = Modifier.size(14.dp)
                                             )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Nota salvata", color = Color(0xFF34D399), style = MaterialTheme.typography.labelSmall)
+                                            Spacer(modifier = Modifier.width(Spacing.xs))
+                                            Text("Nota salvata", color = AppColors.Status.Success, style = MaterialTheme.typography.labelSmall)
                                         }
                                         else -> {
                                             Icon(
                                                 Icons.Outlined.NoteAdd,
                                                 contentDescription = "Salva come nota Zotero",
-                                                tint = Color(0xFFFCD34D),
+                                                tint = AppColors.Accent,
                                                 modifier = Modifier.size(14.dp)
                                             )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Salva come nota", color = Color(0xFFFCD34D), style = MaterialTheme.typography.labelSmall)
+                                            Spacer(modifier = Modifier.width(Spacing.xs))
+                                            Text("Salva come nota", color = AppColors.Accent, style = MaterialTheme.typography.labelSmall)
                                         }
                                     }
                                 }
@@ -666,10 +677,10 @@ private fun ChatPanel(
                             CircularProgressIndicator(
                                 modifier = Modifier.size(16.dp),
                                 strokeWidth = 2.dp,
-                                color = Color(0xFF60A5FA)
+                                color = AppColors.Accent
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Sto leggendo il documento…", color = Color.White.copy(alpha = 0.5f), style = MaterialTheme.typography.labelMedium)
+                            Text("Sto leggendo il documento…", color = AppColors.Label.Tertiary, style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
@@ -688,15 +699,15 @@ private fun ChatPanel(
                     value = inputText,
                     onValueChange = { inputText = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Chiedi qualcosa…", color = Color(0x80FFFFFF)) },
+                    placeholder = { Text("Chiedi qualcosa…", color = AppColors.Label.Placeholder) },
                     maxLines = 4,
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White,
-                        cursorColor = Color(0xFF60A5FA),
-                        focusedBorderColor = Color(0x8060A5FA),
-                        unfocusedBorderColor = Color(0x33FFFFFF)
+                        cursorColor = AppColors.Accent,
+                        focusedBorderColor = AppColors.Accent.copy(alpha = 0.6f),
+                        unfocusedBorderColor = AppColors.Separator
                     )
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -711,14 +722,14 @@ private fun ChatPanel(
                     modifier = Modifier
                         .size(48.dp)
                         .background(
-                            if (inputText.isNotBlank() && !isSending) Color(0xFF60A5FA) else Color(0x33FFFFFF),
+                            if (inputText.isNotBlank() && !isSending) AppColors.Accent else AppColors.Fill.Primary,
                             androidx.compose.foundation.shape.CircleShape
                         )
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Outlined.Send,
                         contentDescription = "Invia",
-                        tint = if (inputText.isNotBlank() && !isSending) Color.Black else Color.White.copy(alpha = 0.5f)
+                        tint = if (inputText.isNotBlank() && !isSending) AppColors.OnAccent else AppColors.Label.Tertiary
                     )
                 }
             }

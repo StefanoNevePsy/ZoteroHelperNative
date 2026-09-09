@@ -6,21 +6,23 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.zoterohelpernative.theme.AppColors
+import com.example.zoterohelpernative.theme.Radius
+import com.example.zoterohelpernative.theme.Spacing
+import com.example.zoterohelpernative.theme.TouchTarget
 import com.example.zoterohelpernative.ui.LibraryViewModel
 import com.example.zoterohelpernative.ui.filteredItems
 import com.example.zoterohelpernative.ui.allTags
@@ -29,8 +31,11 @@ import com.example.zoterohelpernative.ui.year
 import com.example.zoterohelpernative.ui.authorSummary
 import com.example.zoterohelpernative.ui.components.BackgroundCanvas
 import com.example.zoterohelpernative.ui.components.CollectionsSidebar
+import com.example.zoterohelpernative.ui.components.ContentSurface
+import com.example.zoterohelpernative.ui.components.GlassVariant
 import com.example.zoterohelpernative.ui.components.ItemDetailsPanel
-import com.example.zoterohelpernative.ui.components.GlassSurface
+import com.example.zoterohelpernative.ui.components.LiquidGlass
+import com.example.zoterohelpernative.ui.components.ScrollEdge
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.automirrored.outlined.*
 import dev.chrisbanes.haze.HazeState
@@ -52,75 +57,66 @@ fun LibraryScreen(
 
     CompositionLocalProvider(LocalHazeState provides hazeState) {
     Box(modifier = modifier.fillMaxSize()) {
-        // Vibrant Glassmorphism Base Background — the haze source every glass
-        // panel on this screen refracts
+        // Content plane: the background and everything that scrolls on it is what
+        // the functional (glass) layer refracts.
         BackgroundCanvas(modifier = Modifier.fillMaxSize().hazeSource(hazeState))
 
         Scaffold(
-            containerColor = Color.Transparent, // Let the canvas show through
+            containerColor = Color.Transparent,
             topBar = {
-                GlassSurface(
+                // Functional layer: a Liquid Glass bar floating above the content
+                LiquidGlass(
                     modifier = Modifier.fillMaxWidth(),
+                    variant = GlassVariant.Chrome,
                     shape = androidx.compose.ui.graphics.RectangleShape,
-                    color = Color(0x1A000000), // Dark translucent
                     borderColor = Color.Transparent,
-                    blurRadius = 24.dp
+                    borderWidth = 0.dp
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth()
                             .windowInsetsPadding(WindowInsets.statusBars)
                             .height(64.dp)
-                            .padding(horizontal = 16.dp),
+                            .padding(horizontal = Spacing.s),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = { isSidebarOpen = !isSidebarOpen }) {
-                                Icon(Icons.Outlined.Menu, contentDescription = "Menu", tint = Color.White)
+                            IconButton(
+                                onClick = { isSidebarOpen = !isSidebarOpen },
+                                modifier = Modifier.size(TouchTarget.min)
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Menu,
+                                    contentDescription = if (isSidebarOpen) "Nascondi collezioni" else "Mostra collezioni",
+                                    tint = AppColors.Label.Primary
+                                )
                             }
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(Spacing.xs))
                             Text(
-                                text = "Zotero Library", 
-                                color = Color.White,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.SemiBold
+                                text = "Libreria",
+                                color = AppColors.Label.Primary,
+                                style = MaterialTheme.typography.titleLarge
                             )
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (state.pendingSyncCount > 0) {
-                                // Offline queue indicator: tap to force a sync
-                                Surface(
-                                    color = Color(0x33FACC15),
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier
-                                        .padding(end = 8.dp)
-                                        .clickable { viewModel.loadLibrary() }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            Icons.Outlined.CloudUpload,
-                                            contentDescription = "Modifiche in attesa di sincronizzazione",
-                                            tint = Color(0xFFFACC15),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "${state.pendingSyncCount}",
-                                            color = Color(0xFFFACC15),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
+                                PendingSyncBadge(
+                                    count = state.pendingSyncCount,
+                                    onClick = { viewModel.loadLibrary() }
+                                )
+                                Spacer(modifier = Modifier.width(Spacing.xs))
                             }
-                            IconButton(onClick = { viewModel.loadLibrary() }) {
-                                Icon(Icons.Outlined.Refresh, contentDescription = "Refresh", tint = Color.White)
+                            IconButton(
+                                onClick = { viewModel.loadLibrary() },
+                                modifier = Modifier.size(TouchTarget.min)
+                            ) {
+                                Icon(Icons.Outlined.Refresh, contentDescription = "Sincronizza", tint = AppColors.Label.Primary)
                             }
-                            IconButton(onClick = onNavigateToSettings) {
-                                Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = Color.White)
+                            IconButton(
+                                onClick = onNavigateToSettings,
+                                modifier = Modifier.size(TouchTarget.min)
+                            ) {
+                                Icon(Icons.Outlined.Settings, contentDescription = "Impostazioni", tint = AppColors.Label.Primary)
                             }
                         }
                     }
@@ -129,8 +125,8 @@ fun LibraryScreen(
         ) { padding ->
             Box(modifier = Modifier.fillMaxSize().padding(padding)) {
                 Row(modifier = Modifier.fillMaxSize()) {
-                    
-                    // Left Sidebar (Collections)
+
+                    // Left Sidebar (Collections) — functional layer
                     AnimatedVisibility(
                         visible = isSidebarOpen,
                         enter = expandHorizontally() + fadeIn(),
@@ -144,13 +140,8 @@ fun LibraryScreen(
                         )
                     }
 
-                    // Main Library Grid
-                    GlassSurface(
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                        color = Color(0x1AFFFFFF),
-                        borderColor = Color(0x33FFFFFF)
-                    ) {
-                        Column(modifier = Modifier.fillMaxSize()) {
+                    // Content layer: no glass here, the list sits on the background
+                    Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
                         LibraryFilterBar(
                             searchQuery = state.searchQuery,
                             onSearchQueryChange = { viewModel.setSearchQuery(it) },
@@ -161,82 +152,72 @@ fun LibraryScreen(
                             allTags = state.allTags,
                             onFilterTagSelect = { viewModel.setFilterTag(it) }
                         )
+
                         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                        if (state.isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.align(Alignment.Center),
-                                color = Color(0xFF60A5FA)
-                            )
-                        } else if (state.error != null) {
-                            Column(
-                                modifier = Modifier.align(Alignment.Center).padding(32.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = "Impossibile caricare la libreria", 
-                                    color = MaterialTheme.colorScheme.error,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = state.error ?: "Errore sconosciuto", 
-                                    color = Color(0xB3FFFFFF),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                )
-                            }
-                        } else {
-                            val items = state.filteredItems
-                            if (items.isEmpty()) {
-                                // Empty state
-                                Column(
-                                    modifier = Modifier.align(Alignment.Center).padding(32.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Description,
-                                        contentDescription = "Empty",
-                                        modifier = Modifier.size(64.dp),
-                                        tint = Color(0x80FFFFFF)
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Text(
-                                        text = "Nessun documento in questa cartella",
-                                        color = Color.White,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold
+                            when {
+                                state.isLoading -> {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.align(Alignment.Center),
+                                        color = AppColors.Accent
                                     )
                                 }
-                            } else {
-                                LazyColumn(
-                                    contentPadding = PaddingValues(24.dp),
-                                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                                    modifier = Modifier.fillMaxSize()
-                                ) {
-                                    items(items, key = { it.key }) { item ->
-                                        val isSelected = state.activeItem?.key == item.key
-                                        val subtitle = listOfNotNull(
-                                            item.data.authorSummary,
-                                            item.data.year?.toString(),
-                                            item.data.itemType?.replaceFirstChar { it.uppercase() }
-                                        ).joinToString("  •  ")
-                                        LibraryItemCard(
-                                            title = item.data.title ?: "Senza Titolo",
-                                            subtitle = subtitle.ifBlank { "Documento" },
-                                            isSelected = isSelected,
-                                            onClick = { viewModel.setActiveItem(item) }
+                                state.error != null -> {
+                                    EmptyState(
+                                        icon = Icons.Outlined.CloudOff,
+                                        title = "Impossibile caricare la libreria",
+                                        message = state.error ?: "Errore sconosciuto",
+                                        tint = AppColors.Status.Danger,
+                                        modifier = Modifier.align(Alignment.Center)
+                                    )
+                                }
+                                else -> {
+                                    val items = state.filteredItems
+                                    if (items.isEmpty()) {
+                                        EmptyState(
+                                            icon = Icons.Outlined.Description,
+                                            title = "Nessun documento",
+                                            message = if (state.searchQuery.isNotBlank() || state.filterTag != null)
+                                                "Nessun risultato per i filtri attivi."
+                                            else
+                                                "Questa collezione non contiene documenti.",
+                                            modifier = Modifier.align(Alignment.Center)
                                         )
+                                    } else {
+                                        LazyColumn(
+                                            contentPadding = PaddingValues(
+                                                start = Spacing.l,
+                                                end = Spacing.l,
+                                                top = Spacing.s,
+                                                bottom = Spacing.xxxl
+                                            ),
+                                            verticalArrangement = Arrangement.spacedBy(Spacing.s),
+                                            modifier = Modifier.fillMaxSize()
+                                        ) {
+                                            items(items, key = { it.key }) { item ->
+                                                val isSelected = state.activeItem?.key == item.key
+                                                val subtitle = listOfNotNull(
+                                                    item.data.authorSummary,
+                                                    item.data.year?.toString(),
+                                                    item.data.itemType?.replaceFirstChar { it.uppercase() }
+                                                ).joinToString("  ·  ")
+                                                LibraryItemCard(
+                                                    title = item.data.title ?: "Senza titolo",
+                                                    subtitle = subtitle.ifBlank { "Documento" },
+                                                    isSelected = isSelected,
+                                                    onClick = { viewModel.setActiveItem(item) }
+                                                )
+                                            }
+                                        }
+                                        // Transition between the scrolling list and the bar above
+                                        ScrollEdge(modifier = Modifier.align(Alignment.TopCenter))
                                     }
                                 }
                             }
                         }
-                        }
-                        }
                     }
                 }
 
-                // Right Sidebar (Item Details) - Overlay
+                // Right Sidebar (Item Details) — functional layer, above everything
                 AnimatedVisibility(
                     visible = state.activeItem != null,
                     enter = slideInHorizontally(initialOffsetX = { it }),
@@ -268,6 +249,72 @@ fun LibraryScreen(
     }
 }
 
+/** Offline queue indicator. Icon + count, so it doesn't rely on color alone. */
+@Composable
+private fun PendingSyncBadge(count: Int, onClick: () -> Unit) {
+    Surface(
+        color = AppColors.Status.Warning.copy(alpha = 0.16f),
+        shape = RoundedCornerShape(Radius.m),
+        modifier = Modifier
+            .heightIn(min = TouchTarget.compact)
+            .clip(RoundedCornerShape(Radius.m))
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = Spacing.m, vertical = Spacing.s),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.CloudUpload,
+                contentDescription = "$count modifiche in attesa di sincronizzazione",
+                tint = AppColors.Status.Warning,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(Spacing.xs))
+            Text(
+                text = "$count",
+                color = AppColors.Status.Warning,
+                style = MaterialTheme.typography.labelMedium
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmptyState(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    message: String,
+    modifier: Modifier = Modifier,
+    tint: Color = AppColors.Label.Tertiary
+) {
+    Column(
+        modifier = modifier.padding(Spacing.xxxl),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(48.dp),
+            tint = tint
+        )
+        Spacer(modifier = Modifier.height(Spacing.l))
+        Text(
+            text = title,
+            color = AppColors.Label.Primary,
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(Spacing.xs))
+        Text(
+            text = message,
+            color = AppColors.Label.Secondary,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+    }
+}
+
 @Composable
 fun LibraryFilterBar(
     searchQuery: String,
@@ -282,170 +329,224 @@ fun LibraryFilterBar(
     var sortMenuOpen by remember { mutableStateOf(false) }
     var tagMenuOpen by remember { mutableStateOf(false) }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        // Search field
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = AppColors.Label.Primary,
+        unfocusedTextColor = AppColors.Label.Primary,
+        cursorColor = AppColors.Accent,
+        focusedBorderColor = AppColors.Accent.copy(alpha = 0.6f),
+        unfocusedBorderColor = AppColors.Separator
+    )
+
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s)) {
         OutlinedTextField(
             value = searchQuery,
             onValueChange = onSearchQueryChange,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            placeholder = { Text("Cerca per titolo, autore o anno…", color = Color(0x80FFFFFF)) },
-            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = Color(0xB3FFFFFF)) },
+            textStyle = MaterialTheme.typography.bodyMedium,
+            placeholder = {
+                Text(
+                    "Cerca per titolo, autore o anno",
+                    color = AppColors.Label.Placeholder,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = AppColors.Label.Secondary) },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { onSearchQueryChange("") }) {
-                        Icon(Icons.Outlined.Close, contentDescription = "Pulisci ricerca", tint = Color(0xB3FFFFFF))
+                    IconButton(
+                        onClick = { onSearchQueryChange("") },
+                        modifier = Modifier.size(TouchTarget.min)
+                    ) {
+                        Icon(Icons.Outlined.Close, contentDescription = "Pulisci ricerca", tint = AppColors.Label.Secondary)
                     }
                 }
             },
-            shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                cursorColor = Color(0xFF60A5FA),
-                focusedBorderColor = Color(0x8060A5FA),
-                unfocusedBorderColor = Color(0x33FFFFFF)
-            )
+            shape = RoundedCornerShape(Radius.m),
+            colors = fieldColors
         )
 
-        // Sort selector
-        Box {
-            FilterChip(
-                selected = false,
-                onClick = { sortMenuOpen = true },
-                label = { Text("${sortOption.label} ${if (sortAscending) "↑" else "↓"}", color = Color.White) },
-                leadingIcon = {
-                    Icon(Icons.AutoMirrored.Outlined.Sort, contentDescription = "Ordina", tint = Color(0xFF60A5FA))
-                },
-                border = FilterChipDefaults.filterChipBorder(
-                    enabled = true, selected = false,
-                    borderColor = Color(0x33FFFFFF)
-                )
-            )
-            DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {
-                com.example.zoterohelpernative.ui.LibrarySortOption.entries.forEach { option ->
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                if (option == sortOption) "${option.label} ${if (sortAscending) "↑" else "↓"}"
-                                else option.label
-                            )
-                        },
-                        leadingIcon = {
-                            if (option == sortOption) {
-                                Icon(Icons.Outlined.Check, contentDescription = null)
-                            }
-                        },
-                        onClick = {
-                            onSortOptionSelect(option)
-                            // Keep the menu open when toggling direction on the active option
-                            if (option != sortOption) sortMenuOpen = false
-                        }
+        Spacer(modifier = Modifier.height(Spacing.s))
+
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+            // Sort selector
+            Box {
+                FilterChip(
+                    selected = false,
+                    onClick = { sortMenuOpen = true },
+                    modifier = Modifier.heightIn(min = TouchTarget.compact),
+                    label = {
+                        Text(
+                            "${sortOption.label} ${if (sortAscending) "↑" else "↓"}",
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.Sort,
+                            contentDescription = "Ordina",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        labelColor = AppColors.Label.Primary,
+                        iconColor = AppColors.Label.Secondary
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        enabled = true, selected = false,
+                        borderColor = AppColors.Separator
                     )
+                )
+                DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {
+                    com.example.zoterohelpernative.ui.LibrarySortOption.entries.forEach { option ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (option == sortOption) "${option.label} ${if (sortAscending) "↑" else "↓"}"
+                                    else option.label
+                                )
+                            },
+                            leadingIcon = {
+                                if (option == sortOption) Icon(Icons.Outlined.Check, contentDescription = null)
+                            },
+                            onClick = {
+                                onSortOptionSelect(option)
+                                // Keep the menu open when toggling direction on the active option
+                                if (option != sortOption) sortMenuOpen = false
+                            }
+                        )
+                    }
                 }
             }
-        }
 
-        // Tag filter
-        Box {
-            FilterChip(
-                selected = filterTag != null,
-                onClick = { tagMenuOpen = true },
-                label = { Text(filterTag ?: "Tag", color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                leadingIcon = {
-                    Icon(Icons.Outlined.Sell, contentDescription = "Filtra per tag", tint = if (filterTag != null) Color(0xFF34D399) else Color(0xB3FFFFFF))
-                },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = Color(0x3334D399)
-                ),
-                border = FilterChipDefaults.filterChipBorder(
-                    enabled = true, selected = filterTag != null,
-                    borderColor = Color(0x33FFFFFF),
-                    selectedBorderColor = Color(0x8034D399)
+            // Tag filter — selected state shown by icon + label, not color alone
+            Box {
+                FilterChip(
+                    selected = filterTag != null,
+                    onClick = { tagMenuOpen = true },
+                    modifier = Modifier.heightIn(min = TouchTarget.compact),
+                    label = {
+                        Text(
+                            filterTag ?: "Tutti i tag",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            if (filterTag != null) Icons.Filled.Sell else Icons.Outlined.Sell,
+                            contentDescription = "Filtra per tag",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        labelColor = AppColors.Label.Primary,
+                        iconColor = AppColors.Label.Secondary,
+                        selectedContainerColor = AppColors.Accent.copy(alpha = 0.18f),
+                        selectedLabelColor = AppColors.Label.Primary,
+                        selectedLeadingIconColor = AppColors.Accent
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        enabled = true, selected = filterTag != null,
+                        borderColor = AppColors.Separator,
+                        selectedBorderColor = AppColors.Accent.copy(alpha = 0.5f)
+                    )
                 )
-            )
-            DropdownMenu(
-                expanded = tagMenuOpen,
-                onDismissRequest = { tagMenuOpen = false },
-                modifier = Modifier.heightIn(max = 400.dp)
-            ) {
-                DropdownMenuItem(
-                    text = { Text("Tutti i documenti") },
-                    leadingIcon = { if (filterTag == null) Icon(Icons.Outlined.Check, contentDescription = null) },
-                    onClick = {
-                        onFilterTagSelect(null)
-                        tagMenuOpen = false
-                    }
-                )
-                if (allTags.isEmpty()) {
-                    DropdownMenuItem(text = { Text("Nessun tag in libreria") }, enabled = false, onClick = {})
-                }
-                allTags.forEach { tag ->
+                DropdownMenu(
+                    expanded = tagMenuOpen,
+                    onDismissRequest = { tagMenuOpen = false },
+                    modifier = Modifier.heightIn(max = 400.dp)
+                ) {
                     DropdownMenuItem(
-                        text = { Text(tag) },
-                        leadingIcon = { if (filterTag == tag) Icon(Icons.Outlined.Check, contentDescription = null) },
+                        text = { Text("Tutti i documenti") },
+                        leadingIcon = { if (filterTag == null) Icon(Icons.Outlined.Check, contentDescription = null) },
                         onClick = {
-                            onFilterTagSelect(tag)
+                            onFilterTagSelect(null)
                             tagMenuOpen = false
                         }
                     )
+                    if (allTags.isEmpty()) {
+                        DropdownMenuItem(text = { Text("Nessun tag in libreria") }, enabled = false, onClick = {})
+                    }
+                    allTags.forEach { tag ->
+                        DropdownMenuItem(
+                            text = { Text(tag) },
+                            leadingIcon = { if (filterTag == tag) Icon(Icons.Outlined.Check, contentDescription = null) },
+                            onClick = {
+                                onFilterTagSelect(tag)
+                                tagMenuOpen = false
+                            }
+                        )
+                    }
                 }
             }
         }
     }
 }
 
+/**
+ * Content-layer card: a standard material, never Liquid Glass.
+ * Selection is shown by an accent rail plus a tinted fill, so it reads without
+ * relying on color perception alone.
+ */
 @Composable
 fun LibraryItemCard(title: String, subtitle: String, isSelected: Boolean, onClick: () -> Unit) {
-    GlassSurface(
+    ContentSurface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() },
-        shape = RoundedCornerShape(16.dp),
-        color = if (isSelected) Color(0x4D60A5FA) else Color(0x1AFFFFFF),
-        borderColor = if (isSelected) Color(0x8060A5FA) else Color(0x33FFFFFF),
-        blurRadius = 16.dp
+            .heightIn(min = 72.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(Radius.l),
+        color = if (isSelected) AppColors.Accent.copy(alpha = 0.14f) else AppColors.Fill.Secondary,
+        borderColor = if (isSelected) AppColors.Accent.copy(alpha = 0.45f) else AppColors.Separator
     ) {
         Row(
-            modifier = Modifier.padding(20.dp),
+            modifier = Modifier.height(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Selection rail
             Box(
                 modifier = Modifier
-                    .size(48.dp)
-                    .background(Color(0x33FFFFFF), RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
+                    .fillMaxHeight()
+                    .width(3.dp)
+                    .background(if (isSelected) AppColors.Accent else Color.Transparent)
+            )
+            Row(
+                modifier = Modifier.padding(horizontal = Spacing.l, vertical = Spacing.m),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Outlined.Description, 
-                    contentDescription = "Type",
-                    tint = if (isSelected) Color.White else Color(0xFF60A5FA)
-                )
-            }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xB3FFFFFF),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(AppColors.Fill.Primary, RoundedCornerShape(Radius.s)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Description,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = if (isSelected) AppColors.Accent else AppColors.Label.Secondary
+                    )
+                }
+                Spacer(modifier = Modifier.width(Spacing.m))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = AppColors.Label.Primary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(Spacing.xxs))
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppColors.Label.Secondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }

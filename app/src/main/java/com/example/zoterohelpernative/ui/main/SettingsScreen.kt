@@ -29,7 +29,11 @@ import androidx.compose.ui.unit.dp
 import com.example.zoterohelpernative.ui.SettingsViewModel
 import com.example.zoterohelpernative.data.Palette
 import com.example.zoterohelpernative.ui.components.BackgroundCanvas
-import com.example.zoterohelpernative.ui.components.GlassSurface
+import com.example.zoterohelpernative.ui.components.ContentSurface
+import com.example.zoterohelpernative.theme.AppColors
+import com.example.zoterohelpernative.theme.Radius
+import com.example.zoterohelpernative.theme.Spacing
+import com.example.zoterohelpernative.theme.TouchTarget
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.automirrored.outlined.*
 import dev.chrisbanes.haze.hazeSource
@@ -45,14 +49,14 @@ fun SettingsScreen(
     val state by viewModel.state.collectAsState()
 
     val textFieldColors = OutlinedTextFieldDefaults.colors(
-        focusedContainerColor = Color(0x1AFFFFFF),
-        unfocusedContainerColor = Color(0x0DFFFFFF),
-        focusedBorderColor = Color(0x8060A5FA),
-        unfocusedBorderColor = Color(0x33FFFFFF),
+        focusedContainerColor = AppColors.Fill.Secondary,
+        unfocusedContainerColor = AppColors.Fill.Tertiary,
+        focusedBorderColor = AppColors.Accent.copy(alpha = 0.6f),
+        unfocusedBorderColor = AppColors.Separator,
         focusedTextColor = Color.White,
-        unfocusedTextColor = Color(0xD9FFFFFF),
-        focusedLabelColor = Color(0xFF60A5FA),
-        unfocusedLabelColor = Color(0xB3FFFFFF)
+        unfocusedTextColor = AppColors.Label.Primary,
+        focusedLabelColor = AppColors.Accent,
+        unfocusedLabelColor = AppColors.Label.Secondary
     )
 
     val hazeState = remember { dev.chrisbanes.haze.HazeState() }
@@ -83,7 +87,7 @@ fun SettingsScreen(
         ) { padding ->
             if (state.isLoading) {
                 Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color(0xFF60A5FA))
+                    CircularProgressIndicator(color = AppColors.Accent)
                 }
             } else {
                 Column(
@@ -97,12 +101,11 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     // Zotero API Section
-                    GlassSurface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = Color(0x1A000000)
+                    ContentSurface(
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Text("Zotero API", style = MaterialTheme.typography.titleMedium, color = Color(0xFF60A5FA), fontWeight = FontWeight.Bold)
+                            Text("Zotero API", style = MaterialTheme.typography.titleSmall, color = AppColors.Label.Primary)
                             
                             OutlinedTextField(
                                 value = state.zoteroUserId,
@@ -127,12 +130,11 @@ fun SettingsScreen(
                     }
 
                     // WebDAV Section
-                    GlassSurface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = Color(0x1A000000)
+                    ContentSurface(
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Text("WebDAV (Koofr)", style = MaterialTheme.typography.titleMedium, color = Color(0xFF60A5FA), fontWeight = FontWeight.Bold)
+                            Text("WebDAV", style = MaterialTheme.typography.titleSmall, color = AppColors.Label.Primary)
 
                             OutlinedTextField(
                                 value = state.webdavUrl,
@@ -166,16 +168,15 @@ fun SettingsScreen(
                     }
 
                     // AI Section
-                    GlassSurface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = Color(0x1A000000)
+                    ContentSurface(
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Text("AI (Gemini & NVIDIA)", style = MaterialTheme.typography.titleMedium, color = Color(0xFFC084FC), fontWeight = FontWeight.Bold)
+                            Text("Assistente AI", style = MaterialTheme.typography.titleSmall, color = AppColors.Label.Primary)
                             Text(
                                 "Abilita la chat AI sui documenti nel lettore. Gemini: API key gratuita da Google AI Studio (aistudio.google.com). NVIDIA: API key da build.nvidia.com; i modelli disponibili si aggiornano da soli nel selettore della chat.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xB3FFFFFF)
+                                color = AppColors.Label.Secondary
                             )
                             OutlinedTextField(
                                 value = state.geminiApiKey,
@@ -199,16 +200,15 @@ fun SettingsScreen(
                     }
 
                     // Cache Section
-                    GlassSurface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = Color(0x1A000000)
+                    ContentSurface(
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Text("Cache documenti", style = MaterialTheme.typography.titleMedium, color = Color(0xFFFACC15), fontWeight = FontWeight.Bold)
+                            Text("Cache documenti", style = MaterialTheme.typography.titleSmall, color = AppColors.Label.Primary)
                             Text(
                                 "I PDF scaricati restano sul dispositivo per aprirsi all'istante e funzionare offline. Svuota la cache per liberare spazio o forzare il riscaricamento di tutti i documenti.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xB3FFFFFF)
+                                color = AppColors.Label.Secondary
                             )
 
                             Row(
@@ -218,12 +218,12 @@ fun SettingsScreen(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("Scarica automaticamente per l'offline", color = Color.White, fontWeight = FontWeight.SemiBold)
-                                    Text("Dopo ogni sincronizzazione, pre-scarica i PDF dei documenti aperti di recente.", color = Color(0xB3FFFFFF), style = MaterialTheme.typography.bodySmall)
+                                    Text("Dopo ogni sincronizzazione, pre-scarica i PDF dei documenti aperti di recente.", color = AppColors.Label.Secondary, style = MaterialTheme.typography.bodySmall)
                                 }
                                 Switch(
                                     checked = state.autoCachePdfs,
                                     onCheckedChange = viewModel::updateAutoCachePdfs,
-                                    colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFFACC15), checkedTrackColor = Color(0x4DFACC15))
+                                    colors = SwitchDefaults.colors(checkedThumbColor = AppColors.OnAccent, checkedTrackColor = AppColors.Accent)
                                 )
                             }
                             val context = androidx.compose.ui.platform.LocalContext.current
@@ -244,34 +244,33 @@ fun SettingsScreen(
                                 },
                                 modifier = Modifier.fillMaxWidth().height(48.dp),
                                 shape = MaterialTheme.shapes.medium,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0x33FACC15), contentColor = Color(0xFFFACC15))
+                                colors = ButtonDefaults.buttonColors(containerColor = AppColors.Fill.Primary, contentColor = AppColors.Label.Primary)
                             ) {
                                 Icon(Icons.Outlined.DeleteSweep, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("Svuota cache documenti", fontWeight = FontWeight.Bold)
                             }
                             cacheMessage?.let {
-                                Text(it, style = MaterialTheme.typography.bodySmall, color = Color(0xFF34D399))
+                                Text(it, style = MaterialTheme.typography.bodySmall, color = AppColors.Status.Success)
                             }
                         }
                     }
 
                     // Palettes Section
-                    GlassSurface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = Color(0x1A000000)
+                    ContentSurface(
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Text("Palette Personalizzate", style = MaterialTheme.typography.titleMedium, color = Color(0xFF34D399), fontWeight = FontWeight.Bold)
+                            Text("Palette personalizzate", style = MaterialTheme.typography.titleSmall, color = AppColors.Label.Primary)
 
                             var showCreatePaletteDialog by remember { mutableStateOf(false) }
                             var newPaletteName by remember { mutableStateOf("") }
 
                             if (showCreatePaletteDialog) {
                                 AlertDialog(
-                                    containerColor = Color(0xFF1E1E24),
+                                    containerColor = AppColors.Background.Tertiary,
                                     titleContentColor = Color.White,
-                                    textContentColor = Color(0xD9FFFFFF),
+                                    textContentColor = AppColors.Label.Primary,
                                     onDismissRequest = { showCreatePaletteDialog = false },
                                     title = { Text("Nuova Palette", fontWeight = FontWeight.Bold) },
                                     text = {
@@ -290,12 +289,12 @@ fun SettingsScreen(
                                             }
                                             showCreatePaletteDialog = false
                                         }) {
-                                            Text("Crea", color = Color(0xFF60A5FA), fontWeight = FontWeight.Bold)
+                                            Text("Crea", color = AppColors.Accent, fontWeight = FontWeight.Bold)
                                         }
                                     },
                                     dismissButton = {
                                         TextButton(onClick = { showCreatePaletteDialog = false }) {
-                                            Text("Annulla", color = Color(0xB3FFFFFF))
+                                            Text("Annulla", color = AppColors.Label.Secondary)
                                         }
                                     }
                                 )
@@ -307,7 +306,7 @@ fun SettingsScreen(
                                     showCreatePaletteDialog = true
                                 },
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF60A5FA), contentColor = Color.Black)
+                                colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent, contentColor = Color.Black)
                             ) {
                                 Text("Crea Nuova Palette", fontWeight = FontWeight.Bold)
                             }   
@@ -315,9 +314,9 @@ fun SettingsScreen(
                             state.customPalettes.values.forEach { palette ->
                                 Surface(
                                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                                    color = Color(0x1AFFFFFF),
+                                    color = AppColors.Fill.Secondary,
                                     shape = MaterialTheme.shapes.medium,
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x33FFFFFF))
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.Separator)
                                 ) {
                                     Column(modifier = Modifier.padding(16.dp)) {
                                         Row(
@@ -327,7 +326,7 @@ fun SettingsScreen(
                                         ) {
                                             Text(palette.name, style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.SemiBold)
                                             IconButton(onClick = { viewModel.deleteCustomPalette(palette.id) }) {
-                                                Icon(Icons.Outlined.Delete, contentDescription = "Elimina", tint = Color(0xFFFCA5A5))
+                                                Icon(Icons.Outlined.Delete, contentDescription = "Elimina", tint = AppColors.Status.Danger)
                                             }
                                         }
                                         
@@ -339,9 +338,9 @@ fun SettingsScreen(
                                             
                                             if (showColorEdit) {
                                                 AlertDialog(
-                                                    containerColor = Color(0xFF1E1E24),
+                                                    containerColor = AppColors.Background.Tertiary,
                                                     titleContentColor = Color.White,
-                                                    textContentColor = Color(0xD9FFFFFF),
+                                                    textContentColor = AppColors.Label.Primary,
                                                     onDismissRequest = { showColorEdit = false },
                                                     title = { Text("Modifica Colore", fontWeight = FontWeight.Bold) },
                                                     text = {
@@ -358,12 +357,12 @@ fun SettingsScreen(
                                                             viewModel.updateCustomPaletteColor(palette.id, mappedColor.zoteroHex, editHex)
                                                             showColorEdit = false
                                                         }) {
-                                                            Text("Salva", color = Color(0xFF60A5FA), fontWeight = FontWeight.Bold)
+                                                            Text("Salva", color = AppColors.Accent, fontWeight = FontWeight.Bold)
                                                         }
                                                     },
                                                     dismissButton = {
                                                         TextButton(onClick = { showColorEdit = false }) {
-                                                            Text("Annulla", color = Color(0xB3FFFFFF))
+                                                            Text("Annulla", color = AppColors.Label.Secondary)
                                                         }
                                                     }
                                                 )
@@ -376,7 +375,7 @@ fun SettingsScreen(
                                                 horizontalArrangement = Arrangement.SpaceBetween,
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Text(mappedColor.name, style = MaterialTheme.typography.bodyMedium, color = Color(0xD9FFFFFF))
+                                                Text(mappedColor.name, style = MaterialTheme.typography.bodyMedium, color = AppColors.Label.Primary)
                                                 Box(
                                                     modifier = Modifier
                                                         .size(36.dp)
@@ -400,12 +399,11 @@ fun SettingsScreen(
                     }
 
                     // Input Devices Section
-                    GlassSurface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = Color(0x1A000000)
+                    ContentSurface(
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Text("Dispositivi di Input", style = MaterialTheme.typography.titleMedium, color = Color(0xFFFACC15), fontWeight = FontWeight.Bold)
+                            Text("Dispositivi di Input", style = MaterialTheme.typography.titleSmall, color = AppColors.Label.Primary)
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -414,12 +412,12 @@ fun SettingsScreen(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("Usa solo dito per selezione", color = Color.White, fontWeight = FontWeight.SemiBold)
-                                    Text("Disabilita la selezione testo con lo stilo.", color = Color(0xB3FFFFFF), style = MaterialTheme.typography.bodySmall)
+                                    Text("Disabilita la selezione testo con lo stilo.", color = AppColors.Label.Secondary, style = MaterialTheme.typography.bodySmall)
                                 }
                                 Switch(
                                     checked = state.fingerSelectionOnly,
                                     onCheckedChange = viewModel::updateFingerSelectionOnly,
-                                    colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFFACC15), checkedTrackColor = Color(0x4DFACC15))
+                                    colors = SwitchDefaults.colors(checkedThumbColor = AppColors.OnAccent, checkedTrackColor = AppColors.Accent)
                                 )
                             }
                             
@@ -430,24 +428,23 @@ fun SettingsScreen(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("Usa solo penna per evidenziare", color = Color.White, fontWeight = FontWeight.SemiBold)
-                                    Text("Disabilita l'evidenziazione con il dito. Il dito servirà per scorrere la pagina.", color = Color(0xB3FFFFFF), style = MaterialTheme.typography.bodySmall)
+                                    Text("Disabilita l'evidenziazione con il dito. Il dito servirà per scorrere la pagina.", color = AppColors.Label.Secondary, style = MaterialTheme.typography.bodySmall)
                                 }
                                 Switch(
                                     checked = state.penHighlightOnly,
                                     onCheckedChange = viewModel::updatePenHighlightOnly,
-                                    colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFFACC15), checkedTrackColor = Color(0x4DFACC15))
+                                    colors = SwitchDefaults.colors(checkedThumbColor = AppColors.OnAccent, checkedTrackColor = AppColors.Accent)
                                 )
                             }
                         }
                     }
 
                     // Icon Personalization Section
-                    GlassSurface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = Color(0x1A000000)
+                    ContentSurface(
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Text("Personalizzazione Icone", style = MaterialTheme.typography.titleMedium, color = Color(0xFFC084FC), fontWeight = FontWeight.Bold)
+                            Text("Personalizzazione Icone", style = MaterialTheme.typography.titleSmall, color = AppColors.Label.Primary)
                             
                             val toolsToConfigure = listOf(
                                 "tool_highlighter" to "Evidenziatore",
@@ -466,9 +463,9 @@ fun SettingsScreen(
                             
                             if (selectedToolKey != null) {
                                 AlertDialog(
-                                    containerColor = Color(0xFF1E1E24),
+                                    containerColor = AppColors.Background.Tertiary,
                                     titleContentColor = Color.White,
-                                    textContentColor = Color(0xD9FFFFFF),
+                                    textContentColor = AppColors.Label.Primary,
                                     onDismissRequest = { selectedToolKey = null },
                                     title = { Text("Scegli un'icona", fontWeight = FontWeight.Bold) },
                                     text = {
@@ -485,7 +482,7 @@ fun SettingsScreen(
                                                     modifier = Modifier
                                                         .size(48.dp)
                                                         .clip(MaterialTheme.shapes.small)
-                                                        .background(if (isSelected) Color(0x4DC084FC) else Color.Transparent)
+                                                        .background(if (isSelected) AppColors.Accent.copy(alpha = 0.3f) else Color.Transparent)
                                                         .clickable {
                                                             viewModel.updateToolIcon(selectedToolKey!!, iconName)
                                                             selectedToolKey = null
@@ -495,7 +492,7 @@ fun SettingsScreen(
                                                     Icon(
                                                         imageVector = vector,
                                                         contentDescription = null,
-                                                        tint = if (isSelected) Color(0xFFC084FC) else Color.White,
+                                                        tint = if (isSelected) AppColors.Accent else Color.White,
                                                         modifier = Modifier.size(24.dp)
                                                     )
                                                 }
@@ -504,7 +501,7 @@ fun SettingsScreen(
                                     },
                                     confirmButton = {
                                         TextButton(onClick = { selectedToolKey = null }) {
-                                            Text("Chiudi", color = Color(0xB3FFFFFF))
+                                            Text("Chiudi", color = AppColors.Label.Secondary)
                                         }
                                     }
                                 )
@@ -526,7 +523,7 @@ fun SettingsScreen(
                                         modifier = Modifier
                                             .size(40.dp)
                                             .clip(CircleShape)
-                                            .background(Color(0x1AFFFFFF)),
+                                            .background(AppColors.Fill.Secondary),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(imageVector = currentIcon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
@@ -546,7 +543,7 @@ fun SettingsScreen(
                         },
                         modifier = Modifier.fillMaxWidth().height(56.dp),
                         shape = MaterialTheme.shapes.medium,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34D399), contentColor = Color.Black)
+                        colors = ButtonDefaults.buttonColors(containerColor = AppColors.Status.Success, contentColor = Color.Black)
                     ) {
                         Text("Salva Credenziali", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     }

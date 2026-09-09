@@ -10,20 +10,27 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-// We force a Dark Color Scheme as per PRODUCT.md ("Preferenza spiccata per Dark Mode")
+/**
+ * Dark-only scheme (the app is a reading tool). Every role is filled from the
+ * semantic tokens in [AppColors] so Material components inherit the same
+ * hierarchy the custom surfaces use, instead of drifting to their own defaults.
+ */
 private val AppColorScheme = darkColorScheme(
-    primary = AccentPrimary,
-    secondary = AccentSecondary,
-    background = BackgroundDark,
-    surface = SurfaceDark,
-    surfaceVariant = SurfaceVariantDark,
-    onPrimary = BackgroundDark,
-    onSecondary = BackgroundDark,
-    onBackground = TextPrimaryDark,
-    onSurface = TextPrimaryDark,
-    onSurfaceVariant = TextSecondaryDark,
-    outline = OutlineDark,
-    outlineVariant = OutlineDark
+    primary = AppColors.Accent,
+    onPrimary = AppColors.OnAccent,
+    secondary = AppColors.Accent,
+    onSecondary = AppColors.OnAccent,
+    tertiary = AppColors.Status.Success,
+    background = AppColors.Background.Primary,
+    onBackground = AppColors.Label.Primary,
+    surface = AppColors.Background.Secondary,
+    onSurface = AppColors.Label.Primary,
+    surfaceVariant = AppColors.Background.Tertiary,
+    onSurfaceVariant = AppColors.Label.Secondary,
+    error = AppColors.Status.Danger,
+    onError = AppColors.OnAccent,
+    outline = AppColors.Separator,
+    outlineVariant = AppColors.SeparatorOpaque
 )
 
 @Composable

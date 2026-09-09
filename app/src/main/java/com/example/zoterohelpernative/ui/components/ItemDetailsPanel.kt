@@ -19,6 +19,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.zoterohelpernative.data.ZoteroItem
+import com.example.zoterohelpernative.theme.AppColors
+import com.example.zoterohelpernative.theme.Radius
+import com.example.zoterohelpernative.theme.Spacing
+import com.example.zoterohelpernative.theme.TouchTarget
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.automirrored.outlined.*
 
@@ -50,28 +55,28 @@ fun ItemDetailsPanel(
     isAttachmentCached: (String) -> Boolean = { false },
     modifier: Modifier = Modifier
 ) {
-    GlassSurface(
+    LiquidGlass(
         modifier = modifier.fillMaxHeight(),
-        color = Color(0xF212121A), // 95% opacity dark color so text underneath doesn't bleed
-        borderColor = Color(0x4DFFFFFF)
+        variant = GlassVariant.Regular,
+        shape = RoundedCornerShape(topStart = Radius.xxl, bottomStart = Radius.xxl),
+        borderColor = AppColors.Glass.BorderStrong
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Header
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(24.dp),
+                    .padding(start = Spacing.xl, end = Spacing.s, top = Spacing.m, bottom = Spacing.s),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "Dettagli",
                     style = MaterialTheme.typography.titleMedium,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
+                    color = AppColors.Label.Primary
                 )
-                IconButton(onClick = onClose, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Outlined.Close, contentDescription = "Close", tint = Color.White)
+                IconButton(onClick = onClose, modifier = Modifier.size(TouchTarget.min)) {
+                    Icon(Icons.Outlined.Close, contentDescription = "Chiudi", tint = AppColors.Label.Secondary)
                 }
             }
 
@@ -79,13 +84,13 @@ fun ItemDetailsPanel(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp)
+                    .padding(horizontal = Spacing.xl)
             ) {
                 // Title
                 Text(
-                    text = item.data.title ?: "Senza Titolo",
-                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
+                    text = item.data.title ?: "Senza titolo",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = AppColors.Label.Primary
                 )
                 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -93,12 +98,12 @@ fun ItemDetailsPanel(
                 // Authors
                 if (!item.data.creators.isNullOrEmpty()) {
                     Row(verticalAlignment = Alignment.Top) {
-                        Icon(Icons.Outlined.Person, contentDescription = null, tint = Color(0xB3FFFFFF), modifier = Modifier.size(20.dp))
+                        Icon(Icons.Outlined.Person, contentDescription = null, tint = AppColors.Label.Secondary, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             item.data.creators.forEach { creator ->
                                 val name = creator.name ?: "${creator.firstName} ${creator.lastName}".trim()
-                                Text(text = name, color = Color(0xD9FFFFFF), style = MaterialTheme.typography.bodyMedium)
+                                Text(text = name, color = AppColors.Label.Primary, style = MaterialTheme.typography.bodyMedium)
                             }
                         }
                     }
@@ -113,12 +118,15 @@ fun ItemDetailsPanel(
                     Button(
                         onClick = { onOpenPdf(pdfs.first().key) },
                         modifier = Modifier.fillMaxWidth().height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF60A5FA), contentColor = Color.Black),
-                        shape = MaterialTheme.shapes.medium
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = AppColors.Accent,
+                            contentColor = AppColors.OnAccent
+                        ),
+                        shape = RoundedCornerShape(Radius.m)
                     ) {
-                        Icon(Icons.Outlined.PictureAsPdf, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Apri Documento", fontWeight = FontWeight.Bold)
+                        Icon(Icons.Outlined.PictureAsPdf, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(Spacing.s))
+                        Text("Apri documento", style = MaterialTheme.typography.labelLarge)
                     }
                     Spacer(modifier = Modifier.height(24.dp))
                 }
@@ -127,25 +135,23 @@ fun ItemDetailsPanel(
                 if (!item.data.abstractNote.isNullOrBlank()) {
                     Text(
                         text = "Abstract",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = Color(0xFF60A5FA),
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.labelMedium,
+                        color = AppColors.Label.Secondary
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = item.data.abstractNote,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xB3FFFFFF)
+                        color = AppColors.Label.Secondary
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
                 // Tags Section
                 Text(
-                    text = "Tags del documento",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Color(0xFF60A5FA),
-                    fontWeight = FontWeight.Bold
+                    text = "Tag del documento",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = AppColors.Label.Secondary
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 @OptIn(ExperimentalLayoutApi::class)
@@ -155,7 +161,7 @@ fun ItemDetailsPanel(
                 ) {
                     val currentTags = item.data.tags?.map { it.tag } ?: emptyList()
                     if (currentTags.isEmpty()) {
-                        Text("Nessun tag", color = Color(0x80FFFFFF), style = MaterialTheme.typography.bodySmall)
+                        Text("Nessun tag", color = AppColors.Label.Tertiary, style = MaterialTheme.typography.bodySmall)
                     }
                     currentTags.forEach { tagStr ->
                         val tagColor = getTagColor(tagStr)
@@ -178,10 +184,9 @@ fun ItemDetailsPanel(
 
                 // All Available Tags Grid
                 Text(
-                    text = "Aggiungi Tag",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Color(0xFF34D399),
-                    fontWeight = FontWeight.Bold
+                    text = "Aggiungi tag",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = AppColors.Label.Secondary
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -194,14 +199,14 @@ fun ItemDetailsPanel(
                         modifier = Modifier.weight(1f),
                         singleLine = true,
                         textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
-                        placeholder = { Text("Cerca o crea tag…", color = Color(0x80FFFFFF)) },
+                        placeholder = { Text("Cerca o crea tag", color = AppColors.Label.Placeholder, style = MaterialTheme.typography.bodyMedium) },
                         shape = MaterialTheme.shapes.medium,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = Color.White,
                             unfocusedTextColor = Color.White,
-                            cursorColor = Color(0xFF34D399),
-                            focusedBorderColor = Color(0x8034D399),
-                            unfocusedBorderColor = Color(0x33FFFFFF)
+                            cursorColor = AppColors.Accent,
+                            focusedBorderColor = AppColors.Accent.copy(alpha = 0.6f),
+                            unfocusedBorderColor = AppColors.Separator
                         )
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -214,16 +219,16 @@ fun ItemDetailsPanel(
                         },
                         enabled = canCreateTag,
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(TouchTarget.min)
                             .background(
-                                if (canCreateTag) Color(0xFF34D399) else Color(0x33FFFFFF),
-                                MaterialTheme.shapes.medium
+                                if (canCreateTag) AppColors.Accent else AppColors.Fill.Primary,
+                                RoundedCornerShape(Radius.m)
                             )
                     ) {
                         Icon(
                             Icons.Outlined.Add,
                             contentDescription = "Crea tag",
-                            tint = if (canCreateTag) Color.Black else Color(0x80FFFFFF)
+                            tint = if (canCreateTag) AppColors.OnAccent else AppColors.Label.Tertiary
                         )
                     }
                 }
@@ -260,7 +265,7 @@ fun ItemDetailsPanel(
                 // Child Notes
                 val notes = children.filter { it.data.itemType == "note" && !it.data.note.isNullOrBlank() }
                 if (notes.isNotEmpty()) {
-                    Divider(color = Color(0x1AFFFFFF))
+                    HorizontalDivider(color = AppColors.Separator)
                     Spacer(modifier = Modifier.height(24.dp))
                     Text(
                         text = "Note (${notes.size})",
@@ -276,22 +281,19 @@ fun ItemDetailsPanel(
                                 .toString().trim()
                         }
                         var expanded by remember(noteItem.key) { mutableStateOf(false) }
-                        GlassSurface(
+                        ContentSurface(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { expanded = !expanded }
-                                .padding(vertical = 4.dp),
-                            color = Color(0x26FCD34D),
-                            borderColor = Color(0x4DFCD34D),
-                            shape = MaterialTheme.shapes.medium,
-                            blurRadius = 8.dp
+                                .padding(vertical = Spacing.xs),
+                            shape = RoundedCornerShape(Radius.m)
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
                                         Icons.Outlined.Description,
                                         contentDescription = null,
-                                        tint = Color(0xFFFCD34D),
+                                        tint = AppColors.Label.Secondary,
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
@@ -307,7 +309,7 @@ fun ItemDetailsPanel(
                                     Icon(
                                         if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
                                         contentDescription = if (expanded) "Comprimi" else "Espandi",
-                                        tint = Color(0xB3FFFFFF),
+                                        tint = AppColors.Label.Secondary,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
@@ -315,14 +317,14 @@ fun ItemDetailsPanel(
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text(
                                         text = plainText,
-                                        color = Color(0xD9FFFFFF),
+                                        color = AppColors.Label.Primary,
                                         style = MaterialTheme.typography.bodyMedium
                                     )
                                 } else if (plainText.lines().size > 1) {
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
                                         text = plainText,
-                                        color = Color(0x99FFFFFF),
+                                        color = AppColors.Label.Secondary,
                                         style = MaterialTheme.typography.bodySmall,
                                         maxLines = 2,
                                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
@@ -334,7 +336,7 @@ fun ItemDetailsPanel(
                     Spacer(modifier = Modifier.height(24.dp))
                 }
 
-                Divider(color = Color(0x1AFFFFFF))
+                HorizontalDivider(color = AppColors.Separator)
                 Spacer(modifier = Modifier.height(24.dp))
 
                 // Attachments
@@ -347,43 +349,41 @@ fun ItemDetailsPanel(
                 Spacer(modifier = Modifier.height(12.dp))
                 
                 if (pdfs.isEmpty()) {
-                    Text("Nessun PDF collegato", color = Color(0x80FFFFFF), style = MaterialTheme.typography.bodyMedium)
+                    Text("Nessun PDF collegato", color = AppColors.Label.Tertiary, style = MaterialTheme.typography.bodyMedium)
                 } else {
                     pdfs.forEach { pdf ->
-                        GlassSurface(
+                        ContentSurface(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .heightIn(min = TouchTarget.min)
                                 .clickable { onOpenPdf(pdf.key) }
-                                .padding(vertical = 4.dp),
-                            color = Color(0x4D60A5FA), // Accent tint
-                            borderColor = Color(0x8060A5FA),
-                            shape = MaterialTheme.shapes.medium,
-                            blurRadius = 8.dp
+                                .padding(vertical = Spacing.xs),
+                            shape = RoundedCornerShape(Radius.m)
                         ) {
                             Row(
                                 modifier = Modifier.padding(16.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Outlined.PictureAsPdf, contentDescription = null, tint = Color.White)
+                                Icon(Icons.Outlined.PictureAsPdf, contentDescription = null, tint = AppColors.Label.Secondary, modifier = Modifier.size(20.dp))
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Text(
                                     text = pdf.data.filename ?: "Documento PDF",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Medium,
+                                    color = AppColors.Label.Primary,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.weight(1f)
                                 )
                                 if (isAttachmentCached(pdf.key)) {
                                     Icon(
                                         Icons.Outlined.OfflinePin,
                                         contentDescription = "Disponibile offline",
-                                        tint = Color(0xFF34D399),
+                                        tint = AppColors.Status.Success,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 } else {
                                     Icon(
                                         Icons.Outlined.CloudQueue,
                                         contentDescription = "Non ancora scaricato",
-                                        tint = Color(0x80FFFFFF),
+                                        tint = AppColors.Label.Tertiary,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }

@@ -2,6 +2,12 @@ package com.example.zoterohelpernative.ui.main
 
 import com.example.zoterohelpernative.ui.components.RadialMenuCapacitor
 import com.example.zoterohelpernative.ui.components.GlassSurface
+import com.example.zoterohelpernative.ui.components.LiquidGlass
+import com.example.zoterohelpernative.ui.components.GlassVariant
+import com.example.zoterohelpernative.theme.AppColors
+import com.example.zoterohelpernative.theme.Radius
+import com.example.zoterohelpernative.theme.Spacing
+import com.example.zoterohelpernative.theme.TouchTarget
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
@@ -105,14 +111,14 @@ fun ReaderScreen(
             Box(modifier = Modifier.fillMaxSize()) {
                 com.example.zoterohelpernative.ui.components.BackgroundCanvas(modifier = Modifier.fillMaxSize().hazeSource(hazeState))
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color(0xFF60A5FA))
+                    CircularProgressIndicator(color = AppColors.Accent)
                 }
             }
         } else if (state.pdfError != null) {
             Box(modifier = Modifier.fillMaxSize()) {
                 com.example.zoterohelpernative.ui.components.BackgroundCanvas(modifier = Modifier.fillMaxSize().hazeSource(hazeState))
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    com.example.zoterohelpernative.ui.components.GlassSurface(color = Color(0x33FF0000)) {
+                    LiquidGlass(variant = GlassVariant.Regular, tint = AppColors.Status.Danger.copy(alpha = 0.22f)) {
                         Text(
                             text = state.pdfError ?: "Errore caricamento PDF",
                             color = Color.White,
@@ -271,13 +277,11 @@ fun ReaderScreen(
                             .width(popupWidthDp)
                             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {} // Prevent click-through
                     ) {
-                        GlassSurface(
+                        LiquidGlass(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-                            color = Color(0xFA111827),
-                            borderColor = Color(0x33FFFFFF),
-                            borderWidth = 1.dp,
-                            blurRadius = 24.dp
+                            variant = GlassVariant.Regular,
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(Radius.l),
+                            borderColor = AppColors.Glass.BorderStrong
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Row(
@@ -285,15 +289,19 @@ fun ReaderScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    androidx.compose.material3.Text("Opzioni Annotazione", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    androidx.compose.material3.Text(
+                                        "Annotazione",
+                                        color = AppColors.Label.Primary,
+                                        style = MaterialTheme.typography.titleSmall
+                                    )
                                     IconButton(
                                         onClick = {
                                             viewModel.deleteAnnotation(ann)
                                             viewModel.selectAnnotation(null)
                                         },
-                                        modifier = Modifier.size(24.dp)
+                                        modifier = Modifier.size(TouchTarget.min)
                                     ) {
-                                        Icon(Icons.Outlined.Delete, contentDescription = "Elimina", tint = Color(0xFFFCA5A5))
+                                        Icon(Icons.Outlined.Delete, contentDescription = "Elimina annotazione", tint = AppColors.Status.Danger)
                                     }
                                 }
                                 
@@ -307,7 +315,7 @@ fun ReaderScreen(
                                         val parsedColor = safeParseColor(color.uiHex)
                                         Box(
                                             modifier = Modifier
-                                                .size(36.dp)
+                                                .size(TouchTarget.min)
                                                 .clip(CircleShape)
                                                 .background(parsedColor)
                                                 .border(if (isCurrent) 2.dp else 0.dp, if (isCurrent) Color.White else Color.Transparent, CircleShape)
@@ -327,11 +335,11 @@ fun ReaderScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                     maxLines = 3,
                                     textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.White),
-                                    placeholder = { androidx.compose.material3.Text("Aggiungi un commento…", color = Color(0x80FFFFFF), fontSize = 12.sp) },
+                                    placeholder = { androidx.compose.material3.Text("Aggiungi un commento", color = AppColors.Label.Placeholder, style = MaterialTheme.typography.bodySmall) },
                                     trailingIcon = {
                                         if (commentChanged) {
                                             IconButton(onClick = { viewModel.updateAnnotationComment(ann.key, commentText.trim()) }) {
-                                                Icon(Icons.Outlined.Check, contentDescription = "Salva commento", tint = Color(0xFF34D399))
+                                                Icon(Icons.Outlined.Check, contentDescription = "Salva commento", tint = AppColors.Status.Success)
                                             }
                                         }
                                     },
@@ -339,9 +347,9 @@ fun ReaderScreen(
                                     colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                                         focusedTextColor = Color.White,
                                         unfocusedTextColor = Color.White,
-                                        cursorColor = Color(0xFF60A5FA),
-                                        focusedBorderColor = Color(0x8060A5FA),
-                                        unfocusedBorderColor = Color(0x33FFFFFF)
+                                        cursorColor = AppColors.Accent,
+                                        focusedBorderColor = AppColors.Accent.copy(alpha = 0.6f),
+                                        unfocusedBorderColor = AppColors.Separator
                                     )
                                 )
 
@@ -355,14 +363,14 @@ fun ReaderScreen(
                                         modifier = Modifier.weight(1f),
                                         singleLine = true,
                                         textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.White),
-                                        placeholder = { androidx.compose.material3.Text("Cerca o crea tag…", color = Color(0x80FFFFFF), fontSize = 12.sp) },
+                                        placeholder = { androidx.compose.material3.Text("Cerca o crea tag", color = AppColors.Label.Placeholder, style = MaterialTheme.typography.bodySmall) },
                                         shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
                                         colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                                             focusedTextColor = Color.White,
                                             unfocusedTextColor = Color.White,
-                                            cursorColor = Color(0xFF60A5FA),
-                                            focusedBorderColor = Color(0x8060A5FA),
-                                            unfocusedBorderColor = Color(0x33FFFFFF)
+                                            cursorColor = AppColors.Accent,
+                                            focusedBorderColor = AppColors.Accent.copy(alpha = 0.6f),
+                                            unfocusedBorderColor = AppColors.Separator
                                         )
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
@@ -375,20 +383,20 @@ fun ReaderScreen(
                                         },
                                         enabled = canCreate,
                                         modifier = Modifier
-                                            .size(36.dp)
-                                            .background(if (canCreate) Color(0xFF34D399) else Color(0x33FFFFFF), CircleShape)
+                                            .size(TouchTarget.min)
+                                            .background(if (canCreate) AppColors.Accent else AppColors.Fill.Primary, CircleShape)
                                     ) {
                                         Icon(
                                             Icons.Outlined.Add,
                                             contentDescription = "Aggiungi tag",
-                                            tint = if (canCreate) Color.Black else Color(0x80FFFFFF)
+                                            tint = if (canCreate) AppColors.OnAccent else AppColors.Label.Tertiary
                                         )
                                     }
                                 }
 
                                 // Tags Grid
                                 Spacer(modifier = Modifier.height(16.dp))
-                                androidx.compose.material3.Text("TAGS CORRENTI", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+                                androidx.compose.material3.Text("Tag correnti", color = AppColors.Label.Secondary, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = Spacing.s))
 
                                 val tagFilter = tagQuery.trim()
                                 val recentTagsList = viewModel.getRecentTags()
@@ -406,7 +414,7 @@ fun ReaderScreen(
                                     ) {
                                         val currentTags = ann.tags?.map { it.tag } ?: emptyList()
                                         if (currentTags.isEmpty()) {
-                                            androidx.compose.material3.Text("Nessun tag corrente", color = Color(0x80FFFFFF), style = MaterialTheme.typography.bodySmall)
+                                            androidx.compose.material3.Text("Nessun tag corrente", color = AppColors.Label.Tertiary, style = MaterialTheme.typography.bodySmall)
                                         }
                                         currentTags.forEach { tagStr ->
                                             val tagColor = com.example.zoterohelpernative.ui.components.getTagColor(tagStr)
@@ -428,10 +436,9 @@ fun ReaderScreen(
                                     Spacer(modifier = Modifier.height(16.dp))
                                     
                                     androidx.compose.material3.Text(
-                                        text = "Tag Recenti",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = Color(0xFF60A5FA),
-                                        fontWeight = FontWeight.Bold,
+                                        text = "Tag recenti",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = AppColors.Label.Secondary,
                                         modifier = Modifier.padding(bottom = 8.dp)
                                     )
                                     @OptIn(ExperimentalLayoutApi::class)
@@ -460,10 +467,9 @@ fun ReaderScreen(
                                     Spacer(modifier = Modifier.height(16.dp))
                                     
                                     androidx.compose.material3.Text(
-                                        text = "Tutti i Tag",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = Color(0xFF34D399),
-                                        fontWeight = FontWeight.Bold,
+                                        text = "Tutti i tag",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = AppColors.Label.Secondary,
                                         modifier = Modifier.padding(bottom = 8.dp)
                                     )
                                     @OptIn(ExperimentalLayoutApi::class)
@@ -474,7 +480,7 @@ fun ReaderScreen(
                                         val currentTags = ann.tags?.map { it.tag } ?: emptyList()
                                         val remainingTags = allLibraryTags.filter { it !in currentTags && it !in recentTagsList }
                                         if (remainingTags.isEmpty()) {
-                                            androidx.compose.material3.Text("Nessun altro tag", color = Color(0x80FFFFFF), style = MaterialTheme.typography.bodySmall)
+                                            androidx.compose.material3.Text("Nessun altro tag", color = AppColors.Label.Tertiary, style = MaterialTheme.typography.bodySmall)
                                         }
                                         remainingTags.forEach { tagStr ->
                                             val tagColor = com.example.zoterohelpernative.ui.components.getTagColor(tagStr)
@@ -546,7 +552,8 @@ fun ReaderScreen(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(16.dp)
-                .background(androidx.compose.ui.graphics.Color(0xAA000000), CircleShape)
+                .size(TouchTarget.min)
+                .background(AppColors.Glass.ChromeTint, CircleShape)
         ) {
             Icon(
                 imageVector = com.example.zoterohelpernative.ui.icons.IconResolver.resolve(state.toolIcons["tool_menu"], Icons.Outlined.Menu),
@@ -556,14 +563,15 @@ fun ReaderScreen(
         }
 
         // Paging Controls Overlay (liquid glass pill over the PDF)
-        GlassSurface(
+        LiquidGlass(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 32.dp),
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
-            color = Color(0x66101623),
-            borderColor = Color(0x40FFFFFF),
-            blurRadius = 20.dp
+                .navigationBarsPadding()
+                .padding(bottom = Spacing.l),
+            variant = GlassVariant.Clear,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(Radius.xxl),
+            borderColor = AppColors.Glass.Border,
+            dimmed = true
         ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -586,7 +594,7 @@ fun ReaderScreen(
             if (showPageDialog) {
                 var pageInput by remember { mutableStateOf("") }
                 androidx.compose.material3.AlertDialog(
-                    containerColor = Color(0xFF1E1E24),
+                    containerColor = AppColors.Background.Tertiary,
                     titleContentColor = Color.White,
                     onDismissRequest = { showPageDialog = false },
                     title = { Text("Vai a pagina", fontWeight = FontWeight.Bold) },
@@ -602,11 +610,11 @@ fun ReaderScreen(
                             colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
-                                cursorColor = Color(0xFF60A5FA),
-                                focusedBorderColor = Color(0x8060A5FA),
-                                unfocusedBorderColor = Color(0x33FFFFFF),
-                                focusedLabelColor = Color(0xFF60A5FA),
-                                unfocusedLabelColor = Color(0xB3FFFFFF)
+                                cursorColor = AppColors.Accent,
+                                focusedBorderColor = AppColors.Accent.copy(alpha = 0.6f),
+                                unfocusedBorderColor = AppColors.Separator,
+                                focusedLabelColor = AppColors.Accent,
+                                unfocusedLabelColor = AppColors.Label.Secondary
                             )
                         )
                     },
@@ -618,12 +626,12 @@ fun ReaderScreen(
                             },
                             enabled = pageInput.toIntOrNull()?.let { it in 1..state.numPages } == true
                         ) {
-                            Text("Vai", color = Color(0xFF60A5FA), fontWeight = FontWeight.Bold)
+                            Text("Vai", color = AppColors.Accent, style = MaterialTheme.typography.labelLarge)
                         }
                     },
                     dismissButton = {
                         androidx.compose.material3.TextButton(onClick = { showPageDialog = false }) {
-                            Text("Annulla", color = Color(0xB3FFFFFF))
+                            Text("Annulla", color = AppColors.Label.Secondary)
                         }
                     }
                 )
@@ -635,7 +643,7 @@ fun ReaderScreen(
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Successiva", tint = androidx.compose.ui.graphics.Color.White)
             }
         }
-        } // close paging GlassSurface
+        } // close paging LiquidGlass
 
         } // close else
 
@@ -646,16 +654,17 @@ fun ReaderScreen(
                     .align(Alignment.TopCenter)
                     .padding(top = 24.dp, start = 16.dp, end = 16.dp)
             ) {
-                GlassSurface(
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                    color = Color(0xE67F1D1D),
-                    borderColor = Color(0x66FCA5A5)
+                LiquidGlass(
+                    variant = GlassVariant.Regular,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(Radius.m),
+                    tint = AppColors.Status.Danger.copy(alpha = 0.30f),
+                    borderColor = AppColors.Status.Danger.copy(alpha = 0.45f)
                 ) {
                     Text(
                         text = message,
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                        color = AppColors.Label.Primary,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = Spacing.l, vertical = Spacing.m)
                     )
                 }
             }
