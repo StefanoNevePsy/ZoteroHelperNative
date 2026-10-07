@@ -7,6 +7,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.Font
+import com.example.zoterohelpernative.R
 
 /**
  * Complete type scale modelled on the HIG text styles
@@ -25,7 +27,7 @@ import androidx.compose.ui.unit.sp
  */
 private val Sans = FontFamily.Default
 
-val Typography = Typography(
+private val SystemTypography = Typography(
     // Hero headings (rare — empty states, onboarding)
     displayLarge = TextStyle(
         fontFamily = Sans,
@@ -126,3 +128,38 @@ val Typography = Typography(
         letterSpacing = 0.sp
     )
 )
+
+/*
+ * PsyDiary typography: Gloock (display serif) carries the character on titles
+ * only; Archivo is the working face for controls and reading text. PsyDiary's
+ * rule: "personality lives in the surfaces, never in the controls or in the
+ * text people read". Fonts bundled under res/font (SIL OFL, see assets/licenses).
+ */
+private val Gloock = FontFamily(Font(R.font.gloock_regular, FontWeight.Normal))
+private val Archivo = FontFamily(
+    Font(R.font.archivo_regular, FontWeight.Normal),
+    Font(R.font.archivo_medium, FontWeight.Medium),
+    Font(R.font.archivo_semibold, FontWeight.SemiBold),
+    Font(R.font.archivo_bold, FontWeight.Bold)
+)
+
+private fun TextStyle.display() = copy(fontFamily = Gloock, fontWeight = FontWeight.Normal, letterSpacing = (-0.01).sp)
+private fun TextStyle.text() = copy(fontFamily = Archivo)
+
+private val EditorialTypography = SystemTypography.copy(
+    // Gloock ships one weight: hierarchy comes from size, as in PsyDiary
+    displayLarge = SystemTypography.displayLarge.display(),
+    displayMedium = SystemTypography.displayMedium.display(),
+    headlineSmall = SystemTypography.headlineSmall.display(),
+    titleLarge = SystemTypography.titleLarge.display().copy(fontSize = 24.sp, lineHeight = 30.sp),
+    titleMedium = SystemTypography.titleMedium.text(),
+    titleSmall = SystemTypography.titleSmall.text(),
+    bodyLarge = SystemTypography.bodyLarge.text(),
+    bodyMedium = SystemTypography.bodyMedium.text(),
+    bodySmall = SystemTypography.bodySmall.text(),
+    labelLarge = SystemTypography.labelLarge.text(),
+    labelMedium = SystemTypography.labelMedium.text(),
+    labelSmall = SystemTypography.labelSmall.text()
+)
+
+fun appTypography(editorial: Boolean): Typography = if (editorial) EditorialTypography else SystemTypography

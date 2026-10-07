@@ -121,7 +121,7 @@ fun ReaderScreen(
                     LiquidGlass(variant = GlassVariant.Regular, tint = AppColors.Status.Danger.copy(alpha = 0.22f)) {
                         Text(
                             text = state.pdfError ?: "Errore caricamento PDF",
-                            color = Color.White,
+                            color = AppColors.Label.Primary,
                             modifier = Modifier.padding(24.dp)
                         )
                     }
@@ -318,7 +318,7 @@ fun ReaderScreen(
                                                 .size(TouchTarget.min)
                                                 .clip(CircleShape)
                                                 .background(parsedColor)
-                                                .border(if (isCurrent) 2.dp else 0.dp, if (isCurrent) Color.White else Color.Transparent, CircleShape)
+                                                .border(if (isCurrent) 2.dp else 0.dp, if (isCurrent) AppColors.Label.Primary else Color.Transparent, CircleShape)
                                                 .clickable {
                                                     viewModel.updateAnnotationColor(ann.key, color.zoteroHex)
                                                 }
@@ -334,7 +334,7 @@ fun ReaderScreen(
                                     onValueChange = { commentText = it },
                                     modifier = Modifier.fillMaxWidth(),
                                     maxLines = 3,
-                                    textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.White),
+                                    textStyle = MaterialTheme.typography.bodySmall.copy(color = AppColors.Label.Primary),
                                     placeholder = { androidx.compose.material3.Text("Aggiungi un commento", color = AppColors.Label.Placeholder, style = MaterialTheme.typography.bodySmall) },
                                     trailingIcon = {
                                         if (commentChanged) {
@@ -345,8 +345,8 @@ fun ReaderScreen(
                                     },
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
                                     colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                        focusedTextColor = Color.White,
-                                        unfocusedTextColor = Color.White,
+                                        focusedTextColor = AppColors.Label.Primary,
+                                        unfocusedTextColor = AppColors.Label.Primary,
                                         cursorColor = AppColors.Accent,
                                         focusedBorderColor = AppColors.Accent.copy(alpha = 0.6f),
                                         unfocusedBorderColor = AppColors.Separator
@@ -362,12 +362,12 @@ fun ReaderScreen(
                                         onValueChange = { tagQuery = it },
                                         modifier = Modifier.weight(1f),
                                         singleLine = true,
-                                        textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.White),
+                                        textStyle = MaterialTheme.typography.bodySmall.copy(color = AppColors.Label.Primary),
                                         placeholder = { androidx.compose.material3.Text("Cerca o crea tag", color = AppColors.Label.Placeholder, style = MaterialTheme.typography.bodySmall) },
                                         shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
                                         colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                            focusedTextColor = Color.White,
-                                            unfocusedTextColor = Color.White,
+                                            focusedTextColor = AppColors.Label.Primary,
+                                            unfocusedTextColor = AppColors.Label.Primary,
                                             cursorColor = AppColors.Accent,
                                             focusedBorderColor = AppColors.Accent.copy(alpha = 0.6f),
                                             unfocusedBorderColor = AppColors.Separator
@@ -494,7 +494,7 @@ fun ReaderScreen(
                                                     text = tagStr,
                                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                                     style = MaterialTheme.typography.labelMedium,
-                                                    color = Color.White
+                                                    color = AppColors.Label.Primary
                                                 )
                                             }
                                         }
@@ -558,7 +558,7 @@ fun ReaderScreen(
             Icon(
                 imageVector = com.example.zoterohelpernative.ui.icons.IconResolver.resolve(state.toolIcons["tool_menu"], Icons.Outlined.Menu),
                 contentDescription = "Apri Sidebar",
-                tint = androidx.compose.ui.graphics.Color.White
+                tint = AppColors.Label.Primary
             )
         }
 
@@ -581,12 +581,12 @@ fun ReaderScreen(
                 onClick = { viewModel.previousPage() },
                 enabled = state.currentPage > 0
             ) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Precedente", tint = androidx.compose.ui.graphics.Color.White)
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Precedente", tint = AppColors.Label.Primary)
             }
             var showPageDialog by remember { mutableStateOf(false) }
             Text(
                 text = "${state.currentPage + 1} / ${state.numPages}",
-                color = androidx.compose.ui.graphics.Color.White,
+                color = AppColors.Label.Primary,
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
                     .clickable { showPageDialog = true }
@@ -595,7 +595,7 @@ fun ReaderScreen(
                 var pageInput by remember { mutableStateOf("") }
                 androidx.compose.material3.AlertDialog(
                     containerColor = AppColors.Background.Tertiary,
-                    titleContentColor = Color.White,
+                    titleContentColor = AppColors.Label.Primary,
                     onDismissRequest = { showPageDialog = false },
                     title = { Text("Vai a pagina", fontWeight = FontWeight.Bold) },
                     text = {
@@ -608,8 +608,8 @@ fun ReaderScreen(
                                 keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
                             ),
                             colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
+                                focusedTextColor = AppColors.Label.Primary,
+                                unfocusedTextColor = AppColors.Label.Primary,
                                 cursorColor = AppColors.Accent,
                                 focusedBorderColor = AppColors.Accent.copy(alpha = 0.6f),
                                 unfocusedBorderColor = AppColors.Separator,
@@ -640,7 +640,7 @@ fun ReaderScreen(
                 onClick = { viewModel.nextPage() },
                 enabled = state.currentPage < state.numPages - 1
             ) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Successiva", tint = androidx.compose.ui.graphics.Color.White)
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Successiva", tint = AppColors.Label.Primary)
             }
         }
         } // close paging LiquidGlass

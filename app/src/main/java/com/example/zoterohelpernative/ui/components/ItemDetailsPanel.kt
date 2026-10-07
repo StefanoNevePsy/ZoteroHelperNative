@@ -198,12 +198,12 @@ fun ItemDetailsPanel(
                         onValueChange = { newTagText = it },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = AppColors.Label.Primary),
                         placeholder = { Text("Cerca o crea tag", color = AppColors.Label.Placeholder, style = MaterialTheme.typography.bodyMedium) },
                         shape = MaterialTheme.shapes.medium,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
+                            focusedTextColor = AppColors.Label.Primary,
+                            unfocusedTextColor = AppColors.Label.Primary,
                             cursorColor = AppColors.Accent,
                             focusedBorderColor = AppColors.Accent.copy(alpha = 0.6f),
                             unfocusedBorderColor = AppColors.Separator
@@ -255,7 +255,7 @@ fun ItemDetailsPanel(
                                 text = tagStr,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                 style = MaterialTheme.typography.labelMedium,
-                                color = tagColor
+                                color = tagTextColor(tagStr)
                             )
                         }
                     }
@@ -270,7 +270,7 @@ fun ItemDetailsPanel(
                     Text(
                         text = "Note (${notes.size})",
                         style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
+                        color = AppColors.Label.Primary,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(12.dp))
@@ -299,7 +299,7 @@ fun ItemDetailsPanel(
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
                                         text = plainText.lineSequence().firstOrNull { it.isNotBlank() } ?: "Nota",
-                                        color = Color.White,
+                                        color = AppColors.Label.Primary,
                                         fontWeight = FontWeight.Medium,
                                         style = MaterialTheme.typography.bodyMedium,
                                         maxLines = if (expanded) Int.MAX_VALUE else 1,
@@ -343,7 +343,7 @@ fun ItemDetailsPanel(
                 Text(
                     text = "Allegati",
                     style = MaterialTheme.typography.titleMedium,
-                    color = Color.White,
+                    color = AppColors.Label.Primary,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(12.dp))
@@ -396,4 +396,16 @@ fun ItemDetailsPanel(
             }
         }
     }
+}
+
+/**
+ * Text color for a tag chip. The tag hues are pastel and read well as text on
+ * dark themes only; on light themes they are pulled toward the ink color so the
+ * label keeps its hue but stays legible (~7:1 on paper for the worst hue).
+ */
+@Composable
+fun tagTextColor(tag: String): Color {
+    val palette = com.example.zoterohelpernative.theme.LocalAppPalette.current
+    val hue = getTagColor(tag)
+    return if (palette.isDark) hue else androidx.compose.ui.graphics.lerp(hue, palette.labelPrimary, 0.7f)
 }

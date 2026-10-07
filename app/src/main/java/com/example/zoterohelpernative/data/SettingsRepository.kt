@@ -36,6 +36,7 @@ class SettingsRepository(private val context: Context) {
         val LAST_PAGE_MAP = stringPreferencesKey("last_page_map")
         val PDF_MD5_MAP = stringPreferencesKey("pdf_md5_map")
         val AUTO_CACHE_PDFS = androidx.datastore.preferences.core.booleanPreferencesKey("auto_cache_pdfs")
+        val APP_THEME = stringPreferencesKey("app_theme")
     }
 
     private val gson = Gson()
@@ -67,6 +68,7 @@ class SettingsRepository(private val context: Context) {
 
     val penHighlightOnly: Flow<Boolean> = context.dataStore.data.map { it[PEN_HIGHLIGHT_ONLY] ?: false }
     val autoCachePdfs: Flow<Boolean> = context.dataStore.data.map { it[AUTO_CACHE_PDFS] ?: true }
+    val appTheme: Flow<String?> = context.dataStore.data.map { it[APP_THEME] }
     val fingerSelectionOnly: Flow<Boolean> = context.dataStore.data.map { it[FINGER_SELECTION_ONLY] ?: false }
     val pdfTheme: Flow<String?> = context.dataStore.data.map { it[PDF_THEME] }
 
@@ -187,6 +189,12 @@ class SettingsRepository(private val context: Context) {
     suspend fun savePenHighlightOnly(value: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PEN_HIGHLIGHT_ONLY] = value
+        }
+    }
+
+    suspend fun saveAppTheme(themeId: String) {
+        context.dataStore.edit { preferences ->
+            preferences[APP_THEME] = themeId
         }
     }
 

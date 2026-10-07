@@ -69,6 +69,10 @@ fun PdfPageView(
     onDoubleTap: (Offset) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    // Around the page: black on the original theme, a paper hollow on PsyDiary
+    val palette = com.example.zoterohelpernative.theme.LocalAppPalette.current
+    val readerBackdrop = if (palette.backdrop == com.example.zoterohelpernative.theme.Backdrop.Aurora) Color.Black
+        else palette.backgroundTertiary
     val currentAnnotations by rememberUpdatedState(annotations)
     val currentPan by rememberUpdatedState(pan)
     val currentZoom by rememberUpdatedState(zoom)
@@ -125,7 +129,7 @@ fun PdfPageView(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(Color.Black)
+            .background(readerBackdrop)
             .onGloballyPositioned { coordinates ->
                 displaySize = coordinates.size
             }

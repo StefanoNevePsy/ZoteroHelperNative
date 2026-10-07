@@ -197,7 +197,7 @@ fun ReaderSidebar(
                                         ) {
                                             Text(
                                                 text = entry.title,
-                                                color = if (entry.level == 0) Color.White else Color.White.copy(alpha = 0.75f),
+                                                color = if (entry.level == 0) AppColors.Label.Primary else AppColors.Label.Secondary,
                                                 style = if (entry.level == 0) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
                                                 fontWeight = if (entry.level == 0) FontWeight.SemiBold else FontWeight.Normal,
                                                 modifier = Modifier.weight(1f)
@@ -240,8 +240,8 @@ fun ReaderSidebar(
                                     },
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
                                     colors = OutlinedTextFieldDefaults.colors(
-                                        focusedTextColor = Color.White,
-                                        unfocusedTextColor = Color.White,
+                                        focusedTextColor = AppColors.Label.Primary,
+                                        unfocusedTextColor = AppColors.Label.Primary,
                                         cursorColor = AppColors.Accent,
                                         focusedBorderColor = AppColors.Accent.copy(alpha = 0.6f),
                                         unfocusedBorderColor = AppColors.Separator
@@ -366,7 +366,7 @@ fun ReaderSidebar(
                                                         Text(
                                                             text = ann.annotationComment,
                                                             style = MaterialTheme.typography.bodyMedium,
-                                                            color = Color.White
+                                                            color = AppColors.Label.Primary
                                                         )
                                                     }
                                                     
@@ -398,7 +398,7 @@ fun ReaderSidebar(
                                                                     Text(
                                                                         text = tagObj.tag,
                                                                         style = MaterialTheme.typography.labelSmall,
-                                                                        color = tagColor
+                                                                        color = tagTextColor(tagObj.tag)
                                                                     )
                                                                 }
                                                             }
@@ -493,7 +493,7 @@ private fun ChatPanel(
                         ) {
                             Text(
                                 text = selectedNvidiaModel.ifBlank { "Scegli modello…" },
-                                color = Color.White,
+                                color = AppColors.Label.Primary,
                                 style = MaterialTheme.typography.labelSmall,
                                 maxLines = 1,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -703,8 +703,8 @@ private fun ChatPanel(
                     maxLines = 4,
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
+                        focusedTextColor = AppColors.Label.Primary,
+                        unfocusedTextColor = AppColors.Label.Primary,
                         cursorColor = AppColors.Accent,
                         focusedBorderColor = AppColors.Accent.copy(alpha = 0.6f),
                         unfocusedBorderColor = AppColors.Separator

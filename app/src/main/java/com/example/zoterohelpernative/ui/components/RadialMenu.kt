@@ -130,7 +130,7 @@ fun RadialMenuCapacitor(
                     Icon(
                         imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
                         contentDescription = "Back",
-                        tint = Color.White,
+                        tint = AppColors.Label.Primary,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -323,7 +323,7 @@ fun RadialMenuCapacitor(
                         Icon(
                             imageVector = icon,
                             contentDescription = id,
-                            tint = if (isActive) Color.White else AppColors.Label.Secondary,
+                            tint = if (isActive) AppColors.OnAccent else AppColors.Label.Secondary,
                             modifier = Modifier.size(20.dp)
                         )
                     }

@@ -2,6 +2,7 @@ package com.example.zoterohelpernative.ui.main
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -53,7 +54,7 @@ fun SettingsScreen(
         unfocusedContainerColor = AppColors.Fill.Tertiary,
         focusedBorderColor = AppColors.Accent.copy(alpha = 0.6f),
         unfocusedBorderColor = AppColors.Separator,
-        focusedTextColor = Color.White,
+        focusedTextColor = AppColors.Label.Primary,
         unfocusedTextColor = AppColors.Label.Primary,
         focusedLabelColor = AppColors.Accent,
         unfocusedLabelColor = AppColors.Label.Secondary
@@ -71,15 +72,15 @@ fun SettingsScreen(
             containerColor = Color.Transparent,
             topBar = {
                 TopAppBar(
-                    title = { Text("Impostazioni", color = Color.White, fontWeight = FontWeight.Bold) },
+                    title = { Text("Impostazioni", color = AppColors.Label.Primary, fontWeight = FontWeight.Bold) },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Indietro", tint = Color.White)
+                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Indietro", tint = AppColors.Label.Primary)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Transparent,
-                        titleContentColor = Color.White
+                        titleContentColor = AppColors.Label.Primary
                     )
                 )
             },
@@ -99,7 +100,27 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(24.dp)
                 ) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
+                    // Appearance
+                    ContentSurface(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(Spacing.xxl), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                            Text("Aspetto", style = MaterialTheme.typography.titleSmall, color = AppColors.Label.Primary)
+                            Text(
+                                "Il tema si applica subito a tutta l'app. PsyDiary riprende carta, inchiostro e tipografia dell'altro progetto.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AppColors.Label.Secondary
+                            )
+                            Spacer(modifier = Modifier.height(Spacing.xs))
+                            com.example.zoterohelpernative.theme.AppTheme.entries.forEach { theme ->
+                                ThemeOption(
+                                    theme = theme,
+                                    selected = state.appTheme == theme,
+                                    onSelect = { viewModel.updateAppTheme(theme) }
+                                )
+                            }
+                        }
+                    }
+
                     // Zotero API Section
                     ContentSurface(
                         modifier = Modifier.fillMaxWidth()
@@ -217,7 +238,7 @@ fun SettingsScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("Scarica automaticamente per l'offline", color = Color.White, fontWeight = FontWeight.SemiBold)
+                                    Text("Scarica automaticamente per l'offline", color = AppColors.Label.Primary, fontWeight = FontWeight.SemiBold)
                                     Text("Dopo ogni sincronizzazione, pre-scarica i PDF dei documenti aperti di recente.", color = AppColors.Label.Secondary, style = MaterialTheme.typography.bodySmall)
                                 }
                                 Switch(
@@ -269,7 +290,7 @@ fun SettingsScreen(
                             if (showCreatePaletteDialog) {
                                 AlertDialog(
                                     containerColor = AppColors.Background.Tertiary,
-                                    titleContentColor = Color.White,
+                                    titleContentColor = AppColors.Label.Primary,
                                     textContentColor = AppColors.Label.Primary,
                                     onDismissRequest = { showCreatePaletteDialog = false },
                                     title = { Text("Nuova Palette", fontWeight = FontWeight.Bold) },
@@ -306,7 +327,7 @@ fun SettingsScreen(
                                     showCreatePaletteDialog = true
                                 },
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent, contentColor = Color.Black)
+                                colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent, contentColor = AppColors.OnAccent)
                             ) {
                                 Text("Crea Nuova Palette", fontWeight = FontWeight.Bold)
                             }   
@@ -324,7 +345,7 @@ fun SettingsScreen(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(palette.name, style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.SemiBold)
+                                            Text(palette.name, style = MaterialTheme.typography.titleMedium, color = AppColors.Label.Primary, fontWeight = FontWeight.SemiBold)
                                             IconButton(onClick = { viewModel.deleteCustomPalette(palette.id) }) {
                                                 Icon(Icons.Outlined.Delete, contentDescription = "Elimina", tint = AppColors.Status.Danger)
                                             }
@@ -339,7 +360,7 @@ fun SettingsScreen(
                                             if (showColorEdit) {
                                                 AlertDialog(
                                                     containerColor = AppColors.Background.Tertiary,
-                                                    titleContentColor = Color.White,
+                                                    titleContentColor = AppColors.Label.Primary,
                                                     textContentColor = AppColors.Label.Primary,
                                                     onDismissRequest = { showColorEdit = false },
                                                     title = { Text("Modifica Colore", fontWeight = FontWeight.Bold) },
@@ -411,7 +432,7 @@ fun SettingsScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("Usa solo dito per selezione", color = Color.White, fontWeight = FontWeight.SemiBold)
+                                    Text("Usa solo dito per selezione", color = AppColors.Label.Primary, fontWeight = FontWeight.SemiBold)
                                     Text("Disabilita la selezione testo con lo stilo.", color = AppColors.Label.Secondary, style = MaterialTheme.typography.bodySmall)
                                 }
                                 Switch(
@@ -427,7 +448,7 @@ fun SettingsScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("Usa solo penna per evidenziare", color = Color.White, fontWeight = FontWeight.SemiBold)
+                                    Text("Usa solo penna per evidenziare", color = AppColors.Label.Primary, fontWeight = FontWeight.SemiBold)
                                     Text("Disabilita l'evidenziazione con il dito. Il dito servirà per scorrere la pagina.", color = AppColors.Label.Secondary, style = MaterialTheme.typography.bodySmall)
                                 }
                                 Switch(
@@ -464,7 +485,7 @@ fun SettingsScreen(
                             if (selectedToolKey != null) {
                                 AlertDialog(
                                     containerColor = AppColors.Background.Tertiary,
-                                    titleContentColor = Color.White,
+                                    titleContentColor = AppColors.Label.Primary,
                                     textContentColor = AppColors.Label.Primary,
                                     onDismissRequest = { selectedToolKey = null },
                                     title = { Text("Scegli un'icona", fontWeight = FontWeight.Bold) },
@@ -492,7 +513,7 @@ fun SettingsScreen(
                                                     Icon(
                                                         imageVector = vector,
                                                         contentDescription = null,
-                                                        tint = if (isSelected) AppColors.Accent else Color.White,
+                                                        tint = if (isSelected) AppColors.Accent else AppColors.Label.Primary,
                                                         modifier = Modifier.size(24.dp)
                                                     )
                                                 }
@@ -516,7 +537,7 @@ fun SettingsScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(name, color = Color.White, fontWeight = FontWeight.SemiBold)
+                                    Text(name, color = AppColors.Label.Primary, fontWeight = FontWeight.SemiBold)
                                     val currentIconName = state.toolIcons[key]
                                     val currentIcon = com.example.zoterohelpernative.ui.icons.IconResolver.resolve(currentIconName, Icons.Outlined.Settings)
                                     Box(
@@ -526,7 +547,7 @@ fun SettingsScreen(
                                             .background(AppColors.Fill.Secondary),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(imageVector = currentIcon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                        Icon(imageVector = currentIcon, contentDescription = null, tint = AppColors.Label.Primary, modifier = Modifier.size(20.dp))
                                     }
                                 }
                             }
@@ -543,7 +564,7 @@ fun SettingsScreen(
                         },
                         modifier = Modifier.fillMaxWidth().height(56.dp),
                         shape = MaterialTheme.shapes.medium,
-                        colors = ButtonDefaults.buttonColors(containerColor = AppColors.Status.Success, contentColor = Color.Black)
+                        colors = ButtonDefaults.buttonColors(containerColor = AppColors.Status.Success, contentColor = AppColors.OnAccent)
                     ) {
                         Text("Salva Credenziali", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     }
@@ -553,5 +574,69 @@ fun SettingsScreen(
             }
         }
     }
+    }
+}
+
+/**
+ * One selectable theme: a miniature of its palette (paper, ink, accent) next to
+ * the name, so the choice is visible before applying it — not color alone, the
+ * radio button carries the selected state.
+ */
+@Composable
+private fun ThemeOption(
+    theme: com.example.zoterohelpernative.theme.AppTheme,
+    selected: Boolean,
+    onSelect: () -> Unit
+) {
+    val previews = when (theme) {
+        com.example.zoterohelpernative.theme.AppTheme.PSYDIARY_AUTO -> listOf(
+            com.example.zoterohelpernative.theme.Palettes.PsyDiaryCarta,
+            com.example.zoterohelpernative.theme.Palettes.PsyDiaryInchiostro
+        )
+        else -> listOf(theme.palette(systemDark = true))
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = TouchTarget.min)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(Radius.m))
+            .background(if (selected) AppColors.Accent.copy(alpha = 0.12f) else Color.Transparent)
+            .clickable(onClick = onSelect)
+            .padding(horizontal = Spacing.s, vertical = Spacing.s),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(selected = selected, onClick = onSelect)
+        Spacer(modifier = Modifier.width(Spacing.s))
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            previews.forEach { palette ->
+                Box(
+                    modifier = Modifier
+                        .size(width = 44.dp, height = 32.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(Radius.s))
+                        .background(palette.backgroundPrimary)
+                        .border(1.dp, palette.separator, androidx.compose.foundation.shape.RoundedCornerShape(Radius.s)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Aa",
+                            color = palette.labelPrimary,
+                            style = com.example.zoterohelpernative.theme.appTypography(palette.editorialType).titleSmall
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .background(palette.accent, CircleShape)
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.width(Spacing.m))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(theme.label, style = MaterialTheme.typography.labelLarge, color = AppColors.Label.Primary)
+            Text(theme.description, style = MaterialTheme.typography.bodySmall, color = AppColors.Label.Secondary)
+        }
     }
 }

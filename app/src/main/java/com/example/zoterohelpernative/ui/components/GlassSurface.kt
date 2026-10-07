@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.zoterohelpernative.theme.AppColors
+import com.example.zoterohelpernative.theme.LocalAppPalette
 import com.example.zoterohelpernative.theme.Radius
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.HazeState
@@ -71,7 +72,7 @@ private val GlassVariant.blurRadius: Dp
     }
 
 private val GlassVariant.tint: Color
-    get() = when (this) {
+    @Composable get() = when (this) {
         GlassVariant.Regular -> AppColors.Glass.RegularTint
         GlassVariant.Clear -> AppColors.Glass.ClearTint
         GlassVariant.Chrome -> AppColors.Glass.ChromeTint
@@ -79,10 +80,13 @@ private val GlassVariant.tint: Color
 
 /** Used when the platform can't blur (Android < 12): opaque enough to stay readable. */
 private val GlassVariant.fallbackTint: Color
-    get() = when (this) {
-        GlassVariant.Regular -> Color(0xF01A1F2B)
-        GlassVariant.Clear -> Color(0xC0141821)
-        GlassVariant.Chrome -> Color(0xE0141821)
+    @Composable get() {
+        val palette = LocalAppPalette.current
+        return when (this) {
+            GlassVariant.Regular -> palette.glassFallbackRegular
+            GlassVariant.Clear -> palette.glassFallbackClear
+            GlassVariant.Chrome -> palette.glassFallbackChrome
+        }
     }
 
 @Composable
@@ -101,14 +105,18 @@ fun LiquidGlass(
     val effectiveTint = tint ?: variant.tint
 
     val surfaceModifier = if (hazeState != null) {
+        // Theme values are read here: the hazeEffect block isn't composable
+        val base = AppColors.Background.GlassBase
+        val dim = AppColors.Glass.Dim
+        val fallback = variant.fallbackTint
         Modifier.hazeEffect(state = hazeState) {
             this.blurRadius = variant.blurRadius
-            backgroundColor = AppColors.Background.GlassBase
+            backgroundColor = base
             tints = buildList {
-                if (dimmed) add(HazeTint(AppColors.Glass.Dim))
+                if (dimmed) add(HazeTint(dim))
                 add(HazeTint(effectiveTint))
             }
-            this.fallbackTint = HazeTint(variant.fallbackTint)
+            this.fallbackTint = HazeTint(fallback)
             noiseFactor = 0.05f
         }
     } else {
@@ -189,14 +197,16 @@ fun ScrollEdge(
     fromTop: Boolean = true
 ) {
     val hazeState = LocalHazeState.current ?: return
+    val base = AppColors.Background.GlassBase
+    val edgeTint = AppColors.Background.Primary.copy(alpha = 0.2f)
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(height)
             .hazeEffect(state = hazeState) {
                 blurRadius = 20.dp
-                backgroundColor = AppColors.Background.GlassBase
-                tints = listOf(HazeTint(Color(0x33101623)))
+                backgroundColor = base
+                tints = listOf(HazeTint(edgeTint))
                 progressive = HazeProgressive.verticalGradient(
                     startIntensity = if (fromTop) 1f else 0f,
                     endIntensity = if (fromTop) 0f else 1f
