@@ -7,14 +7,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.zoterohelpernative.data.ItemData
 import com.example.zoterohelpernative.data.SettingsRepository
-import com.example.zoterohelpernative.data.WebDavClient
 import com.example.zoterohelpernative.data.ZoteroApiService
 import com.example.zoterohelpernative.theme.DEFAULT_PALETTES
 import com.example.zoterohelpernative.data.Palette
 import com.example.zoterohelpernative.data.MappedColor
 import com.example.zoterohelpernative.theme.AccentSecondary
 import com.example.zoterohelpernative.theme.ZoteroYellow
-import com.example.zoterohelpernative.utils.ZipUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -177,7 +175,7 @@ class ReaderViewModel(
             .build()
             .create(ZoteroApiService::class.java)
     }
-    private val webDavClient = WebDavClient()
+    private val attachmentDownloader = com.example.zoterohelpernative.data.AttachmentDownloader(settingsRepository)
 
     fun setActiveTool(tool: ActiveTool) {
         _state.update { it.copy(activeTool = tool) }
@@ -1582,20 +1580,16 @@ class ReaderViewModel(
             try {
                 val apiKey = settingsRepository.zoteroApiKey.firstOrNull()
                 val userId = settingsRepository.zoteroUserId.firstOrNull()
-                val webDavUrl = settingsRepository.webdavUrl.firstOrNull()
-                val webDavUser = settingsRepository.webdavUser.firstOrNull()
-                val webDavPass = settingsRepository.webdavPass.firstOrNull()
 
-                if (apiKey.isNullOrEmpty() || userId.isNullOrEmpty() || webDavUrl.isNullOrEmpty()) {
-                    _state.update { it.copy(isLoadingPdf = false, pdfError = "Credenziali mancanti (API o WebDAV).") }
+                // WebDAV is optional now: attachments can also come from Zotero storage
+                if (apiKey.isNullOrEmpty() || userId.isNullOrEmpty()) {
+                    _state.update { it.copy(isLoadingPdf = false, pdfError = "Credenziali Zotero mancanti: impostale nelle Impostazioni.") }
                     return@launch
                 }
 
                 // The itemKey passed from the UI IS the attachment key!
                 val attachmentKey = itemKey
-                val extractDir = File(cacheDir, "extracted_$attachmentKey")
-                val cachedPdf = extractDir.listFiles()
-                    ?.firstOrNull { it.isFile && it.extension.equals("pdf", ignoreCase = true) && it.length() > 0 }
+                val cachedPdf = com.example.zoterohelpernative.data.AttachmentDownloader.cachedPdf(cacheDir, attachmentKey)
 
                 if (cachedPdf != null) {
                     // ---- Instant path: open from the cache, refresh in background ----
@@ -1606,7 +1600,7 @@ class ReaderViewModel(
 
                     viewModelScope.launch { refreshAnnotationsFromServer(userId, apiKey, attachmentKey) }
                     refreshLibraryTags(userId, apiKey)
-                    viewModelScope.launch { checkForUpdatedPdf(userId, apiKey, attachmentKey, cacheDir, extractDir) }
+                    viewModelScope.launch { checkForUpdatedPdf(userId, apiKey, attachmentKey, cacheDir) }
                 } else {
                     // ---- First open: the network is required ----
                     var remoteMd5: String? = null
@@ -1619,19 +1613,16 @@ class ReaderViewModel(
                         e.printStackTrace()
                     }
 
-                    val zipFile = webDavClient.downloadAttachment(webDavUrl, webDavUser, webDavPass, attachmentKey, cacheDir)
-                    if (zipFile == null) {
-                        _state.update { it.copy(isLoadingPdf = false, pdfError = "Errore download da WebDAV (documento non in cache e rete assente?).") }
-                        return@launch
+                    val pdfFile = when (val outcome = attachmentDownloader.ensurePdf(attachmentKey, cacheDir)) {
+                        is com.example.zoterohelpernative.data.DownloadOutcome.Success -> outcome.pdf
+                        is com.example.zoterohelpernative.data.DownloadOutcome.Failure -> {
+                            _state.update {
+                                it.copy(isLoadingPdf = false, pdfError = "Impossibile scaricare il documento: ${outcome.reason}.")
+                            }
+                            return@launch
+                        }
                     }
-                    val pdfFile = ZipUtils.extractPdfFromZip(zipFile, extractDir)
-                    zipFile.delete() // the extracted PDF is what we cache, no need to keep the archive
                     remoteMd5?.let { settingsRepository.savePdfMd5(attachmentKey, it) }
-
-                    if (pdfFile == null) {
-                        _state.update { it.copy(isLoadingPdf = false, pdfError = "Il file ZIP non conteneva alcun PDF.") }
-                        return@launch
-                    }
 
                     refreshAnnotationsFromServer(userId, apiKey, attachmentKey)
                     refreshLibraryTags(userId, apiKey)
@@ -1707,7 +1698,7 @@ class ReaderViewModel(
      * replaced on Zotero the new version is downloaded in the background and
      * used at the next open.
      */
-    private suspend fun checkForUpdatedPdf(userId: String, apiKey: String, attachmentKey: String, cacheDir: File, extractDir: File) {
+    private suspend fun checkForUpdatedPdf(userId: String, apiKey: String, attachmentKey: String, cacheDir: File) {
         try {
             val res = apiService.getItems(userId, apiKey, itemKey = attachmentKey)
             val attachmentData = res.body()?.firstOrNull()?.data ?: return
@@ -1721,13 +1712,9 @@ class ReaderViewModel(
             }
             if (storedMd5 == remoteMd5) return
 
-            val webDavUrl = settingsRepository.webdavUrl.firstOrNull() ?: return
-            val webDavUser = settingsRepository.webdavUser.firstOrNull()
-            val webDavPass = settingsRepository.webdavPass.firstOrNull()
-            val zipFile = webDavClient.downloadAttachment(webDavUrl, webDavUser, webDavPass, attachmentKey, cacheDir) ?: return
-            extractDir.deleteRecursively()
-            ZipUtils.extractPdfFromZip(zipFile, extractDir)
-            zipFile.delete()
+            // The old copy stays in place unless the new one installs completely
+            val outcome = attachmentDownloader.ensurePdf(attachmentKey, cacheDir, forceRefresh = true)
+            if (outcome !is com.example.zoterohelpernative.data.DownloadOutcome.Success) return
             settingsRepository.savePdfMd5(attachmentKey, remoteMd5)
             setSyncError("È disponibile una versione aggiornata del PDF: riapri il documento per vederla.")
         } catch (e: Exception) {

@@ -172,7 +172,7 @@ class LibraryViewModel(
         }
     }
 
-    private val webDavClient = com.example.zoterohelpernative.data.WebDavClient()
+    private val attachmentDownloader = com.example.zoterohelpernative.data.AttachmentDownloader(settingsRepository)
     private var prefetchJob: kotlinx.coroutines.Job? = null
 
     /**
@@ -186,10 +186,6 @@ class LibraryViewModel(
         prefetchJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 if (settingsRepository.autoCachePdfs.firstOrNull() != true) return@launch
-                val webDavUrl = settingsRepository.webdavUrl.firstOrNull() ?: return@launch
-                if (webDavUrl.isEmpty()) return@launch
-                val webDavUser = settingsRepository.webdavUser.firstOrNull()
-                val webDavPass = settingsRepository.webdavPass.firstOrNull()
 
                 val snapshot = _state.value
                 val pdfAttachments = snapshot.items.filter {
@@ -203,20 +199,21 @@ class LibraryViewModel(
                 }
 
                 var downloads = 0
+                var consecutiveFailures = 0
                 for (attachment in ordered) {
-                    if (downloads >= maxDownloadsPerRun) break
-                    val extractDir = java.io.File(dir, "extracted_${attachment.key}")
-                    val alreadyCached = extractDir.listFiles()
-                        ?.any { it.isFile && it.extension.equals("pdf", ignoreCase = true) && it.length() > 0 } == true
-                    if (alreadyCached) continue
+                    // Repeated failures mean a network/credential problem: stop
+                    // instead of hammering the server for every item in the library
+                    if (downloads >= maxDownloadsPerRun || consecutiveFailures >= 3) break
+                    if (com.example.zoterohelpernative.data.AttachmentDownloader.cachedPdf(dir, attachment.key) != null) continue
 
-                    val zipFile = webDavClient.downloadAttachment(webDavUrl, webDavUser, webDavPass, attachment.key, dir)
-                        ?: continue
-                    val extracted = com.example.zoterohelpernative.utils.ZipUtils.extractPdfFromZip(zipFile, extractDir)
-                    zipFile.delete()
-                    if (extracted != null) {
-                        attachment.data.md5?.let { settingsRepository.savePdfMd5(attachment.key, it) }
-                        downloads++
+                    // Same per-attachment lock as the reader: never two downloads of one file
+                    when (attachmentDownloader.ensurePdf(attachment.key, dir)) {
+                        is com.example.zoterohelpernative.data.DownloadOutcome.Success -> {
+                            attachment.data.md5?.let { settingsRepository.savePdfMd5(attachment.key, it) }
+                            downloads++
+                            consecutiveFailures = 0
+                        }
+                        is com.example.zoterohelpernative.data.DownloadOutcome.Failure -> consecutiveFailures++
                     }
                 }
             } catch (e: Exception) {

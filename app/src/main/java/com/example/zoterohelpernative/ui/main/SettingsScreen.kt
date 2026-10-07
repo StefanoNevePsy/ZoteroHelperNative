@@ -234,7 +234,7 @@ fun SettingsScreen(
                                     scope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         var freedBytes = 0L
                                         context.cacheDir.listFiles()?.forEach { file ->
-                                            if (file.name.startsWith("extracted_") || file.name.endsWith(".zip")) {
+                                            if (file.name.startsWith("extracted_") || file.name.startsWith("staging_") || file.name.endsWith(".zip") || file.name.endsWith(".part")) {
                                                 freedBytes += file.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
                                                 file.deleteRecursively()
                                             }
