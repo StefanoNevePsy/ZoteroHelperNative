@@ -13,8 +13,22 @@ android {
         applicationId = "com.example.zoterohelpernative"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        // CI passes -PversionCode=<run number> so every built APK is
+        // identifiable and installs as an update over the previous one
+        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
+        versionName = "1.0." + versionCode
+    }
+
+    signingConfigs {
+        // Shared debug key (Android's public default credentials, not a secret).
+        // Without it every machine/CI runner signs with its own random key and
+        // Android refuses to update the installed app with the new APK.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
