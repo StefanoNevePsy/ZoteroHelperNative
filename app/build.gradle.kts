@@ -88,6 +88,9 @@ dependencies {
   // Local tests: jUnit, coroutines, Android runner
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
+  // Real org.json on the JVM (android.jar only ships stubs): lets tests run
+  // the previous org.json-based annotation logic as a reference implementation
+  testImplementation("org.json:json:20260814")
 
   // Instrumented tests: jUnit rules and runners
   androidTestImplementation(libs.androidx.test.core)
