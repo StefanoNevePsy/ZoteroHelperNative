@@ -90,41 +90,16 @@ fun PdfPageView(
     var lastGestureEndTime by remember { mutableStateOf(0L) }
     var lastPanTapTime by remember { mutableStateOf(0L) }
 
-    val colorFilter = remember(pdfTheme) {
-        when (pdfTheme) {
-            "dark" -> androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix(floatArrayOf(
-                -1f, 0f, 0f, 0f, 255f,
-                0f, -1f, 0f, 0f, 255f,
-                0f, 0f, -1f, 0f, 255f,
-                0f, 0f, 0f, 1f, 0f
-            )))
-            "sepia" -> androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix(floatArrayOf(
-                0.393f, 0.769f, 0.189f, 0f, 0f,
-                0.349f, 0.686f, 0.168f, 0f, 0f,
-                0.272f, 0.534f, 0.131f, 0f, 0f,
-                0f, 0f, 0f, 1f, 0f
-            )))
-            "nordic" -> androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix(floatArrayOf(
-                -0.745f, 0f, 0f, 0f, 236f,
-                0f, -0.733f, 0f, 0f, 239f,
-                0f, 0f, -0.706f, 0f, 244f,
-                0f, 0f, 0f, 1f, 0f
-            )))
-            "oled" -> androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix(floatArrayOf(
-                -1.2f, 0f, 0f, 0f, 255f,
-                0f, -1.2f, 0f, 0f, 255f,
-                0f, 0f, -1.2f, 0f, 255f,
-                0f, 0f, 0f, 1f, 0f
-            )))
-            "forest" -> androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix(floatArrayOf(
-                -0.533f, 0f, 0f, 0f, 163f,
-                0f, -0.588f, 0f, 0f, 188f,
-                0f, 0f, -0.525f, 0f, 166f,
-                0f, 0f, 0f, 1f, 0f
-            )))
-            else -> null
+    val resolvedTheme = PdfThemes.resolve(pdfTheme, appIsDark = palette.isDark)
+    val colorFilter = remember(resolvedTheme) {
+        PdfThemes.colorMatrix(resolvedTheme)?.let {
+            androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix(it))
         }
     }
+    // Multiply darkens: perfect on white paper, invisible on a dark page. Dark
+    // themes draw highlights as a translucent wash so the text stays readable.
+    val highlightBlend = if (resolvedTheme.isDark) BlendMode.SrcOver else BlendMode.Multiply
+    val highlightAlpha = if (resolvedTheme.isDark) 0.38f else 1f
 
     Box(
         modifier = modifier
@@ -534,8 +509,8 @@ fun PdfPageView(
             if (currentDragRects.isNotEmpty()) {
                 drawPath(
                     path = dragPath,
-                    color = activeUiColor.copy(alpha = 0.5f),
-                    blendMode = androidx.compose.ui.graphics.BlendMode.Multiply
+                    color = activeUiColor.copy(alpha = 0.5f * highlightAlpha),
+                    blendMode = highlightBlend
                 )
             }
 
@@ -647,8 +622,8 @@ fun PdfPageView(
 
                             drawPath(
                                 path = annPath,
-                                color = uiColor,
-                                blendMode = androidx.compose.ui.graphics.BlendMode.Multiply
+                                color = uiColor.copy(alpha = uiColor.alpha * highlightAlpha),
+                                blendMode = highlightBlend
                             )
                         }
                     } catch (e: Exception) {

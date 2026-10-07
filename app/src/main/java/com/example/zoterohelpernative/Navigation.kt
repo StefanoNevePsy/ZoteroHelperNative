@@ -73,7 +73,17 @@ fun MainNavigation() {
     }
   }
 
-  val libraryViewModel = remember { LibraryViewModel(settingsRepository, zoteroRepository, context.cacheDir) }
+  val libraryViewModel = remember {
+    LibraryViewModel(
+      settingsRepository,
+      zoteroRepository,
+      context.cacheDir,
+      isNetworkMetered = {
+        (context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager)
+          .isActiveNetworkMetered
+      }
+    )
+  }
   val readerViewModel = remember { ReaderViewModel(settingsRepository, zoteroRepository) }
   val settingsViewModel = remember { SettingsViewModel(settingsRepository) }
 

@@ -40,6 +40,9 @@ jobs:
       - name: Set up Gradle (with cache)
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Unit tests
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
+
       - name: Build
         run: ./gradlew :app:assembleDebug -PversionCode=${{ github.run_number }} --stacktrace
 

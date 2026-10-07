@@ -99,7 +99,9 @@ fun LibraryState.getChildrenForItem(parentKey: String): List<ZoteroItem> {
 class LibraryViewModel(
     private val settingsRepository: SettingsRepository,
     private val zoteroRepository: com.example.zoterohelpernative.data.sync.ZoteroRepository,
-    private val cacheDir: java.io.File? = null
+    private val cacheDir: java.io.File? = null,
+    /** True on metered connections (mobile data, hotspots): prefetch is skipped there. */
+    private val isNetworkMetered: () -> Boolean = { false }
 ) : ViewModel() {
     private val _state = MutableStateFlow(LibraryState())
     val state: StateFlow<LibraryState> = _state.asStateFlow()
@@ -186,6 +188,9 @@ class LibraryViewModel(
         prefetchJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 if (settingsRepository.autoCachePdfs.firstOrNull() != true) return@launch
+                // Bulk downloads only on unmetered networks; opening a document
+                // still downloads it on any connection
+                if (isNetworkMetered()) return@launch
 
                 val snapshot = _state.value
                 val pdfAttachments = snapshot.items.filter {

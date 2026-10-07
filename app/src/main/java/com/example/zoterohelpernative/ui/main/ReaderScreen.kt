@@ -103,6 +103,12 @@ fun ReaderScreen(
         viewModel.loadDocument(itemKey, context.cacheDir)
     }
 
+    // Reading: don't let the screen time out mid-page; released on leaving
+    DisposableEffect(view) {
+        view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
+    }
+
     val hazeState = remember { HazeState() }
 
     CompositionLocalProvider(LocalHazeState provides hazeState) {
@@ -546,20 +552,31 @@ fun ReaderScreen(
             modifier = Modifier.fillMaxHeight().align(Alignment.CenterEnd).zIndex(3f)
         )
 
-        // Top right sidebar toggle
-        IconButton(
-            onClick = { viewModel.toggleSidebar() },
+        // Top right controls: page theme + sidebar. statusBarsPadding keeps them
+        // clear of the status bar, which the edge-to-edge reader draws under.
+        Row(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(16.dp)
-                .size(TouchTarget.min)
-                .background(AppColors.Glass.ChromeTint, CircleShape)
+                .statusBarsPadding()
+                .padding(Spacing.l),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s)
         ) {
-            Icon(
-                imageVector = com.example.zoterohelpernative.ui.icons.IconResolver.resolve(state.toolIcons["tool_menu"], Icons.Outlined.Menu),
-                contentDescription = "Apri Sidebar",
-                tint = AppColors.Label.Primary
+            PdfThemePicker(
+                selectedId = state.pdfTheme,
+                onSelect = { viewModel.setPdfTheme(it) }
             )
+            IconButton(
+                onClick = { viewModel.toggleSidebar() },
+                modifier = Modifier
+                    .size(TouchTarget.min)
+                    .background(AppColors.Glass.ChromeTint, CircleShape)
+            ) {
+                Icon(
+                    imageVector = com.example.zoterohelpernative.ui.icons.IconResolver.resolve(state.toolIcons["tool_menu"], Icons.Outlined.Menu),
+                    contentDescription = "Apri pannello laterale",
+                    tint = AppColors.Label.Primary
+                )
+            }
         }
 
         // Paging Controls Overlay (liquid glass pill over the PDF)
@@ -670,5 +687,59 @@ fun ReaderScreen(
             }
         }
     }
+    }
+}
+
+/**
+ * Page appearance picker: every theme shows a miniature of its paper and text
+ * plus its name, and the active one is marked with a check (not color alone).
+ */
+@Composable
+private fun PdfThemePicker(selectedId: String, onSelect: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(
+            onClick = { open = true },
+            modifier = Modifier
+                .size(TouchTarget.min)
+                .background(AppColors.Glass.ChromeTint, CircleShape)
+        ) {
+            Icon(Icons.Outlined.Contrast, contentDescription = "Aspetto della pagina", tint = AppColors.Label.Primary)
+        }
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            Text(
+                "Aspetto della pagina",
+                style = MaterialTheme.typography.labelMedium,
+                color = AppColors.Label.Secondary,
+                modifier = Modifier.padding(horizontal = Spacing.l, vertical = Spacing.s)
+            )
+            val appIsDark = com.example.zoterohelpernative.theme.LocalAppPalette.current.isDark
+            val options = listOf(com.example.zoterohelpernative.pdf.PdfThemes.AUTO to "Segui il tema dell'app") +
+                com.example.zoterohelpernative.pdf.PdfThemes.all.map { it.id to it.label }
+            options.forEach { (id, label) ->
+                val preview = com.example.zoterohelpernative.pdf.PdfThemes.resolve(id, appIsDark)
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(label, style = MaterialTheme.typography.bodyMedium) },
+                    leadingIcon = {
+                        Box(
+                            modifier = Modifier
+                                .size(width = 36.dp, height = 26.dp)
+                                .background(Color(0xFF000000.toInt() or preview.background), androidx.compose.foundation.shape.RoundedCornerShape(Radius.s))
+                                .border(1.dp, AppColors.Separator, androidx.compose.foundation.shape.RoundedCornerShape(Radius.s)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Aa", color = Color(0xFF000000.toInt() or preview.foreground), style = MaterialTheme.typography.labelMedium)
+                        }
+                    },
+                    trailingIcon = {
+                        if (id == selectedId) Icon(Icons.Outlined.Check, contentDescription = "Selezionato", tint = AppColors.Accent)
+                    },
+                    onClick = {
+                        onSelect(id)
+                        open = false
+                    }
+                )
+            }
+        }
     }
 }

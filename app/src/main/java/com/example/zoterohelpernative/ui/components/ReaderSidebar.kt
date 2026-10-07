@@ -79,6 +79,7 @@ fun ReaderSidebar(
     ) {
         LiquidGlass(
             modifier = Modifier
+                .statusBarsPadding()
                 .padding(end = Spacing.l, top = 80.dp, bottom = Spacing.l)
                 .fillMaxHeight()
                 .width(320.dp),

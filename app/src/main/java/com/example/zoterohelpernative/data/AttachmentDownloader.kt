@@ -53,6 +53,28 @@ class AttachmentDownloader(private val settingsRepository: SettingsRepository) {
 
         fun extractDirFor(cacheDir: File, attachmentKey: String) = File(cacheDir, "extracted_$attachmentKey")
 
+        /**
+         * Zotero appends "/zotero/" to the WebDAV base itself; users often paste the
+         * URL already ending in "/zotero". Try the configured layout first, then the
+         * other one.
+         */
+        internal fun webDavCandidates(base: String, key: String): List<String> {
+            val trimmed = base.trim().trimEnd('/')
+            val withSegment = "$trimmed/zotero/$key.zip"
+            val asIs = "$trimmed/$key.zip"
+            return if (trimmed.endsWith("/zotero", ignoreCase = true)) listOf(asIs, withSegment)
+            else listOf(withSegment, asIs)
+        }
+
+        internal enum class Format { ZIP, PDF, UNKNOWN }
+
+        /** WebDAV serves a ZIP, Zotero storage the raw PDF: tell them apart by magic bytes. */
+        internal fun detectFormat(header: ByteArray, length: Int): Format = when {
+            length >= 2 && header[0] == 'P'.code.toByte() && header[1] == 'K'.code.toByte() -> Format.ZIP
+            length >= 4 && String(header, 0, 4, Charsets.US_ASCII) == "%PDF" -> Format.PDF
+            else -> Format.UNKNOWN
+        }
+
         fun cachedPdf(cacheDir: File, attachmentKey: String): File? =
             extractDirFor(cacheDir, attachmentKey).listFiles()
                 ?.firstOrNull { it.isFile && it.extension.equals("pdf", ignoreCase = true) && it.length() > 0 }
@@ -136,19 +158,6 @@ class AttachmentDownloader(private val settingsRepository: SettingsRepository) {
         return errors.joinToString("; ").ifEmpty { "nessuna sorgente configurata (WebDAV o API Zotero)" }
     }
 
-    /**
-     * Zotero appends "/zotero/" to the WebDAV base itself; users often paste the
-     * URL already ending in "/zotero". Try the configured layout first, then the
-     * other one.
-     */
-    private fun webDavCandidates(base: String, key: String): List<String> {
-        val trimmed = base.trimEnd('/')
-        val withSegment = "$trimmed/zotero/$key.zip"
-        val asIs = "$trimmed/$key.zip"
-        return if (trimmed.endsWith("/zotero", ignoreCase = true)) listOf(asIs, withSegment)
-        else listOf(withSegment, asIs)
-    }
-
     private suspend fun fetchWithRetry(
         url: String,
         source: String,
@@ -186,8 +195,9 @@ class AttachmentDownloader(private val settingsRepository: SettingsRepository) {
     private fun installDownloaded(downloaded: File, attachmentKey: String, cacheDir: File): DownloadOutcome {
         val header = ByteArray(4)
         val read = downloaded.inputStream().use { it.read(header) }
-        val isZip = read >= 2 && header[0] == 'P'.code.toByte() && header[1] == 'K'.code.toByte()
-        val isPdf = read >= 4 && String(header, Charsets.US_ASCII) == "%PDF"
+        val format = detectFormat(header, read)
+        val isZip = format == Format.ZIP
+        val isPdf = format == Format.PDF
 
         val finalDir = extractDirFor(cacheDir, attachmentKey)
         val stagingDir = File(cacheDir, "staging_${attachmentKey}_${UUID.randomUUID()}")

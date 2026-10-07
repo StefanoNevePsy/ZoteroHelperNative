@@ -239,7 +239,7 @@ fun SettingsScreen(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("Scarica automaticamente per l'offline", color = AppColors.Label.Primary, fontWeight = FontWeight.SemiBold)
-                                    Text("Dopo ogni sincronizzazione, pre-scarica i PDF dei documenti aperti di recente.", color = AppColors.Label.Secondary, style = MaterialTheme.typography.bodySmall)
+                                    Text("Dopo ogni sincronizzazione pre-scarica i PDF aperti di recente, solo su reti non a consumo (Wi-Fi).", color = AppColors.Label.Secondary, style = MaterialTheme.typography.bodySmall)
                                 }
                                 Switch(
                                     checked = state.autoCachePdfs,
