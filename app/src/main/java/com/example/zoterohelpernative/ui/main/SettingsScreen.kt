@@ -247,6 +247,21 @@ fun SettingsScreen(
                                     colors = SwitchDefaults.colors(checkedThumbColor = AppColors.OnAccent, checkedTrackColor = AppColors.Accent)
                                 )
                             }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Mostra statistiche di disegno", color = AppColors.Label.Primary, fontWeight = FontWeight.SemiBold)
+                                    Text("Nel lettore, sopra le pagine: risoluzione, memoria e tempo di ogni pagina. Utile per misurare le prestazioni.", color = AppColors.Label.Secondary, style = MaterialTheme.typography.bodySmall)
+                                }
+                                Switch(
+                                    checked = state.renderStats,
+                                    onCheckedChange = viewModel::updateRenderStats,
+                                    colors = SwitchDefaults.colors(checkedThumbColor = AppColors.OnAccent, checkedTrackColor = AppColors.Accent)
+                                )
+                            }
                             val context = androidx.compose.ui.platform.LocalContext.current
                             val scope = androidx.compose.runtime.rememberCoroutineScope()
                             var cacheMessage by remember { mutableStateOf<String?>(null) }

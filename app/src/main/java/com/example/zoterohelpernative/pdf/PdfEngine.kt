@@ -38,23 +38,28 @@ class PdfEngine {
         }
     } }
 
-    suspend fun renderPage(pageIndex: Int, scale: Float = 1.0f): PageRenderResult? = withContext(Dispatchers.IO) { docMutex.withLock {
+    /**
+     * Draws [pageIndex] at [scale] pixels per PDF point (see [RenderBudget] for
+     * how the reader picks it). Text is *not* extracted here: that's
+     * [extractStructuredText], run separately so the page shows as soon as
+     * it's drawn.
+     */
+    suspend fun renderPage(pageIndex: Int, scale: Float): PageRenderResult? = withContext(Dispatchers.IO) { docMutex.withLock {
         val doc = document ?: return@withContext null
         if (pageIndex < 0 || pageIndex >= pageCount) return@withContext null
 
         var page: Page? = null
         try {
+            val started = System.nanoTime()
             page = doc.loadPage(pageIndex)
             val bounds: Rect = page.bounds
-            
+
             // Native PDF dimensions (usually 72 dpi)
             val nativeWidth = bounds.x1 - bounds.x0
             val nativeHeight = bounds.y1 - bounds.y0
 
-            // Apply scale for rendering resolution (e.g., 3.5x for retina/high-res screens)
-            val renderScale = scale * 3.5f 
             // Translate the CTM so the top-left of the bounds maps to (0,0) in the bitmap
-            val ctm = Matrix(renderScale, 0f, 0f, renderScale, -bounds.x0 * renderScale, -bounds.y0 * renderScale)
+            val ctm = Matrix(scale, 0f, 0f, scale, -bounds.x0 * scale, -bounds.y0 * scale)
 
             val bbox: Rect = page.bounds.transform(ctm)
             val width = (bbox.x1 - bbox.x0).toInt()
@@ -68,29 +73,50 @@ class PdfEngine {
             page.run(dev, ctm, null)
             dev.close()
 
-            // Extract text with bounding boxes
-            val structuredText = page.toStructuredText("preserve-whitespace")
-            val textBlocks = mutableListOf<TextRect>()
-            
-            if (structuredText != null) {
-                // We must traverse blocks -> lines -> chars
-                // However, Fitz Android wrapper usually only gives us blocks/lines.
-                // We'll extract what we can to feed the React-like logic.
-                // Note: The actual Fitz API might vary slightly, we use typical block extraction.
-                // Assuming we can just store the structuredText for later parsing or parse it here.
-            }
-
             return@withContext PageRenderResult(
                 bitmap = bitmap,
                 nativeWidth = nativeWidth,
                 nativeHeight = nativeHeight,
                 nativeBoundsLeft = bounds.x0,
                 nativeBoundsTop = bounds.y0,
-                structuredText = structuredText
+                scale = scale,
+                renderMillis = (System.nanoTime() - started) / 1_000_000
             )
         } catch (e: Exception) {
             e.printStackTrace()
             return@withContext null
+        } finally {
+            page?.destroy()
+        }
+    } }
+
+    /** Text with character boxes for [pageIndex], used for highlight snapping. */
+    suspend fun extractStructuredText(pageIndex: Int): StructuredText? = withContext(Dispatchers.IO) { docMutex.withLock {
+        val doc = document ?: return@withContext null
+        if (pageIndex < 0 || pageIndex >= pageCount) return@withContext null
+        var page: Page? = null
+        try {
+            page = doc.loadPage(pageIndex)
+            page.toStructuredText("preserve-whitespace")
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        } finally {
+            page?.destroy()
+        }
+    } }
+
+    /** Size of [pageIndex] in PDF points, without drawing it. */
+    suspend fun pageSize(pageIndex: Int): Pair<Float, Float>? = withContext(Dispatchers.IO) { docMutex.withLock {
+        val doc = document ?: return@withContext null
+        if (pageIndex < 0 || pageIndex >= pageCount) return@withContext null
+        var page: Page? = null
+        try {
+            page = doc.loadPage(pageIndex)
+            val b = page.bounds
+            (b.x1 - b.x0) to (b.y1 - b.y0)
+        } catch (e: Exception) {
+            null
         } finally {
             page?.destroy()
         }
@@ -392,7 +418,9 @@ data class PageRenderResult(
     val nativeHeight: Float,
     val nativeBoundsLeft: Float = 0f,
     val nativeBoundsTop: Float = 0f,
-    val structuredText: StructuredText? = null
+    /** Pixels per PDF point the bitmap was drawn at. */
+    val scale: Float = 1f,
+    val renderMillis: Long = 0
 )
 
 data class TextRect(

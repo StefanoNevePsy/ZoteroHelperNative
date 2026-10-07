@@ -29,6 +29,7 @@ data class SettingsState(
     val penHighlightOnly: Boolean = false,
     val fingerSelectionOnly: Boolean = false,
     val autoCachePdfs: Boolean = true,
+    val renderStats: Boolean = false,
     val appTheme: com.example.zoterohelpernative.theme.AppTheme = com.example.zoterohelpernative.theme.AppTheme.NOTTE,
     val toolIcons: Map<String, String> = emptyMap(),
     val isLoading: Boolean = true
@@ -79,6 +80,11 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
             }
         }
         viewModelScope.launch {
+            repository.renderStats.collect { value ->
+                _state.update { it.copy(renderStats = value) }
+            }
+        }
+        viewModelScope.launch {
             repository.appTheme.collect { id ->
                 _state.update { it.copy(appTheme = com.example.zoterohelpernative.theme.AppTheme.fromId(id)) }
             }
@@ -124,6 +130,11 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
     fun updateAppTheme(theme: com.example.zoterohelpernative.theme.AppTheme) {
         _state.update { it.copy(appTheme = theme) }
         viewModelScope.launch { repository.saveAppTheme(theme.id) }
+    }
+
+    fun updateRenderStats(value: Boolean) {
+        _state.update { it.copy(renderStats = value) }
+        viewModelScope.launch { repository.saveRenderStats(value) }
     }
 
     fun updateAutoCachePdfs(value: Boolean) {

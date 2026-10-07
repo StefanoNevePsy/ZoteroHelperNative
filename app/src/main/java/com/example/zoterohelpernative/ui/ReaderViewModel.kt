@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.withLock
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -78,6 +79,12 @@ data class ReaderState(
     val structuredText: com.artifex.mupdf.fitz.StructuredText? = null,
     
     val isLoadingPdf: Boolean = false,
+    /** Page whose bitmap is on screen; can briefly lag [currentPage] while the next one draws. */
+    val displayedPage: Int = 0,
+    /** A page is being drawn (the previous one stays visible meanwhile). */
+    val isRenderingPage: Boolean = false,
+    val showRenderStats: Boolean = false,
+    val renderStats: String? = null,
     val pdfError: String? = null,
     val pdfTheme: String = "light",
     val syncError: String? = null,
@@ -143,6 +150,11 @@ class ReaderViewModel(
         viewModelScope.launch {
             settingsRepository.toolIcons.collect { icons ->
                 _state.update { it.copy(toolIcons = icons) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.renderStats.collect { show ->
+                _state.update { it.copy(showRenderStats = show) }
             }
         }
         viewModelScope.launch {
@@ -476,7 +488,7 @@ class ReaderViewModel(
         val s = _state.value
         val newAnn = AnnotationOps.buildHighlight(
             parentItemKey = parentItemKey,
-            pageIndex = s.currentPage,
+            pageIndex = s.displayedPage,
             pageHeight = s.pdfNativeHeight,
             rects = nativeRects.map { PdfRect(it.left, it.top, it.right, it.bottom) },
             text = extractedText,
@@ -598,9 +610,15 @@ class ReaderViewModel(
             documentTextCache = null
             currentAttachmentKey = itemKey
             currentParentItemKey = null
+            resetPageCache()
             _state.update {
                 it.copy(
                     isLoadingPdf = true,
+                    pageBitmap = null,
+                    structuredText = null,
+                    viewportBitmap = null,
+                    viewportRect = null,
+                    isRenderingPage = false,
                     pdfError = null,
                     annotations = emptyList(),
                     selectedAnnotationId = null,
@@ -673,8 +691,8 @@ class ReaderViewModel(
             // Resume from the last read page, if any
             val savedPage = settingsRepository.lastPageMap.firstOrNull()?.get(attachmentKey) ?: 0
             val startPage = savedPage.coerceIn(0, (pdfEngine.pageCount - 1).coerceAtLeast(0))
-            _state.update { it.copy(numPages = pdfEngine.pageCount, currentPage = startPage, isLoadingPdf = false) }
-            renderCurrentPage()
+            _state.update { it.copy(numPages = pdfEngine.pageCount, currentPage = startPage) }
+            renderCurrentPage() // clears the loading screen once the first page is drawn
             // Table of contents, loaded off the critical path
             viewModelScope.launch {
                 _state.update { it.copy(tocEntries = pdfEngine.getOutline()) }
@@ -783,55 +801,163 @@ class ReaderViewModel(
         }
     }
 
-    fun loadPdf(file: java.io.File) {
-        viewModelScope.launch {
-            if (pdfEngine.loadDocument(file)) {
-                _state.update { it.copy(numPages = pdfEngine.pageCount, currentPage = 0) }
-                renderCurrentPage()
+    // ---- Page rendering ---------------------------------------------------
+    //
+    // Pages are drawn at RenderBudget's resolution (1.5x the screen, never more
+    // than the old fixed 3.5x cost), kept in an LRU of the current page and its
+    // neighbours, and the next/previous pages are prepared in the background.
+    // Text for highlight snapping is extracted after the bitmap is on screen.
+    // A page turn never swaps the reader for the loading screen: the previous
+    // page stays visible until the new one is ready.
+
+    private class RenderedPage(
+        val result: com.example.zoterohelpernative.pdf.PageRenderResult,
+        var text: com.artifex.mupdf.fitz.StructuredText? = null
+    )
+
+    private val pageCache = com.example.zoterohelpernative.pdf.PageCache<RenderedPage>(capacity = 3)
+    private val pagesInFlight = mutableMapOf<Int, kotlinx.coroutines.Deferred<RenderedPage?>>()
+    private val textInFlight = mutableMapOf<Int, kotlinx.coroutines.Deferred<Unit>>()
+    /** Bumped when a document is (re)loaded: work started for the old one is discarded. */
+    private var renderGeneration = 0
+
+    private var renderJob: kotlinx.coroutines.Job? = null
+    private var prefetchJob: kotlinx.coroutines.Job? = null
+
+    private fun resetPageCache() {
+        renderGeneration++
+        pagesInFlight.values.forEach { it.cancel() }
+        textInFlight.values.forEach { it.cancel() }
+        pagesInFlight.clear()
+        textInFlight.clear()
+        pageCache.clear()
+        prefetchJob?.cancel()
+        renderJob?.cancel()
+    }
+
+    private suspend fun targetScale(pageIndex: Int): Float {
+        val (w, h) = pdfEngine.pageSize(pageIndex) ?: return 1f
+        // The reader is full screen, so the screen size is the view size
+        val metrics = android.content.res.Resources.getSystem().displayMetrics
+        return com.example.zoterohelpernative.pdf.RenderBudget.scaleFor(w, h, metrics.widthPixels, metrics.heightPixels)
+    }
+
+    /**
+     * The rendered page, from the cache or drawn now. Concurrent requests for
+     * the same page share one render, so flipping into a page the prefetch is
+     * already drawing doesn't draw it twice.
+     */
+    private suspend fun ensureRendered(pageIndex: Int): RenderedPage? {
+        val generation = renderGeneration
+        val wanted = targetScale(pageIndex)
+        pageCache[pageIndex]?.let { cached ->
+            if (com.example.zoterohelpernative.pdf.RenderBudget.isReusable(cached.result.scale, wanted)) return cached
+        }
+        // The render job owns its bookkeeping: a caller cancelled by a quick page
+        // turn must not drop a render still in progress, or the next request
+        // would draw the page again and this result would be lost.
+        val deferred = pagesInFlight[pageIndex] ?: viewModelScope.async {
+            val rendered = pdfEngine.renderPage(pageIndex, wanted)?.let { RenderedPage(it) }
+            if (generation == renderGeneration) {
+                if (rendered != null) pageCache.put(pageIndex, rendered)
+                pagesInFlight.remove(pageIndex)
+            }
+            rendered
+        }.also { pagesInFlight[pageIndex] = it }
+        val rendered = deferred.await()
+        return if (generation == renderGeneration) rendered else null
+    }
+
+    /** Extracts the page text once, then shows it if that page is still on screen. */
+    private suspend fun ensureText(pageIndex: Int, page: RenderedPage) {
+        if (page.text != null) return
+        val generation = renderGeneration
+        val deferred = textInFlight[pageIndex] ?: viewModelScope.async {
+            val text = pdfEngine.extractStructuredText(pageIndex)
+            if (generation == renderGeneration) {
+                page.text = text
+                textInFlight.remove(pageIndex)
+            }
+        }.also { textInFlight[pageIndex] = it }
+        deferred.await()
+        if (_state.value.displayedPage == pageIndex && page.text != null) {
+            _state.update { it.copy(structuredText = page.text) }
+        }
+    }
+
+    fun renderCurrentPage() {
+        renderJob?.cancel()
+        prefetchJob?.cancel()
+        val target = _state.value.currentPage
+        renderJob = viewModelScope.launch {
+            val cached = pageCache[target]
+            if (cached == null) _state.update { it.copy(isRenderingPage = true) }
+            val page = ensureRendered(target)
+            if (page == null) {
+                // A failed page turn keeps the previous page; only a failed first
+                // page (nothing on screen) is an error
+                _state.update {
+                    if (it.pageBitmap == null) it.copy(pdfError = "Impossibile renderizzare la pagina", isLoadingPdf = false, isRenderingPage = false)
+                    else it.copy(isRenderingPage = false)
+                }
+                return@launch
+            }
+            if (_state.value.currentPage != target) return@launch // the user moved on meanwhile
+
+            val r = page.result
+            _state.update {
+                it.copy(
+                    pageBitmap = r.bitmap,
+                    pdfNativeWidth = r.nativeWidth,
+                    pdfNativeHeight = r.nativeHeight,
+                    pdfNativeBoundsLeft = r.nativeBoundsLeft,
+                    pdfNativeBoundsTop = r.nativeBoundsTop,
+                    structuredText = page.text,
+                    displayedPage = target,
+                    viewportBitmap = null,
+                    viewportRect = null,
+                    isLoadingPdf = false,
+                    isRenderingPage = false,
+                    renderStats = renderStatsFor(target, r, fromCache = cached != null)
+                )
+            }
+            ensureText(target, page)
+
+            // Prepare the pages the user is most likely to open next
+            prefetchJob = viewModelScope.launch {
+                for (neighbour in listOf(target + 1, target - 1)) {
+                    if (neighbour !in 0 until _state.value.numPages) continue
+                    val next = ensureRendered(neighbour) ?: continue
+                    ensureText(neighbour, next)
+                }
             }
         }
     }
 
-    private var renderJob: kotlinx.coroutines.Job? = null
-
-    fun renderCurrentPage() {
-        renderJob?.cancel()
-        renderJob = viewModelScope.launch {
-            _state.update { it.copy(isLoadingPdf = true, viewportBitmap = null, viewportRect = null) }
-            val result = pdfEngine.renderPage(_state.value.currentPage)
-            if (result != null) {
-                _state.update { 
-                    it.copy(
-                        pageBitmap = result.bitmap,
-                        pdfNativeWidth = result.nativeWidth,
-                        pdfNativeHeight = result.nativeHeight,
-                        pdfNativeBoundsLeft = result.nativeBoundsLeft,
-                        pdfNativeBoundsTop = result.nativeBoundsTop,
-                        structuredText = result.structuredText,
-                        isLoadingPdf = false
-                    ) 
-                }
-            } else {
-                _state.update { it.copy(pdfError = "Impossibile renderizzare la pagina", isLoadingPdf = false) }
-            }
-        }
+    private fun renderStatsFor(page: Int, r: com.example.zoterohelpernative.pdf.PageRenderResult, fromCache: Boolean): String {
+        val mb = r.bitmap.width.toLong() * r.bitmap.height * 4 / 1_048_576.0
+        val source = if (fromCache) "dalla memoria" else "${r.renderMillis} ms"
+        return "Pag. ${page + 1}: ${r.bitmap.width}×${r.bitmap.height} (%.1f MB, %.2fx) · %s · in memoria %s"
+            .format(java.util.Locale.ROOT, mb, r.scale, source, pageCache.pages.sorted().joinToString(",") { "${it + 1}" })
     }
 
     private var viewportJob: kotlinx.coroutines.Job? = null
 
     fun renderViewport(nativeRect: androidx.compose.ui.geometry.Rect, bitmapWidth: Int, bitmapHeight: Int) {
         if (bitmapWidth <= 0 || bitmapHeight <= 0) return
-        
+
         viewportJob?.cancel()
         viewportJob = viewModelScope.launch {
+            val page = _state.value.displayedPage
             val rectF = android.graphics.RectF(nativeRect.left, nativeRect.top, nativeRect.right, nativeRect.bottom)
-            val result = pdfEngine.renderViewport(_state.value.currentPage, rectF, bitmapWidth, bitmapHeight)
-            if (result != null) {
-                _state.update { 
+            val result = pdfEngine.renderViewport(page, rectF, bitmapWidth, bitmapHeight)
+            // Drop a tile that arrives after the page changed
+            if (result != null && _state.value.displayedPage == page) {
+                _state.update {
                     it.copy(
                         viewportBitmap = result,
                         viewportRect = nativeRect
-                    ) 
+                    )
                 }
             }
         }

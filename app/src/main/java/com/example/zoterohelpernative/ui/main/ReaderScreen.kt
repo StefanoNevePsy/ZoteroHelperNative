@@ -135,7 +135,7 @@ fun ReaderScreen(
             }
         } else {
             PdfPageView(
-            currentPage = state.currentPage,
+            currentPage = state.displayedPage,
             pageBitmap = state.pageBitmap,
             pdfNativeWidth = state.pdfNativeWidth,
             pdfNativeHeight = state.pdfNativeHeight,
@@ -161,7 +161,7 @@ fun ReaderScreen(
             },
             onAnnotationCreated = { nativeRects, extractedText ->
                 if (state.activeTool == ActiveTool.ERASER) {
-                    viewModel.eraseAnnotationsIntersecting(nativeRects, state.currentPage)
+                    viewModel.eraseAnnotationsIntersecting(nativeRects, state.displayedPage)
                 } else {
                     val type = if (state.activeTool == ActiveTool.UNDERLINE) "underline" else "highlight"
                     viewModel.addHighlight(itemKey, nativeRects, extractedText, type)
@@ -579,6 +579,21 @@ fun ReaderScreen(
             }
         }
 
+        // Optional render diagnostics (Settings → Cache documenti)
+        if (state.showRenderStats && state.renderStats != null) {
+            Text(
+                text = state.renderStats ?: "",
+                style = MaterialTheme.typography.labelSmall,
+                color = AppColors.Label.Primary,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 88.dp)
+                    .background(AppColors.Glass.ChromeTint, androidx.compose.foundation.shape.RoundedCornerShape(Radius.s))
+                    .padding(horizontal = Spacing.s, vertical = Spacing.xs)
+            )
+        }
+
         // Paging Controls Overlay (liquid glass pill over the PDF)
         LiquidGlass(
             modifier = Modifier
@@ -601,13 +616,29 @@ fun ReaderScreen(
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Precedente", tint = AppColors.Label.Primary)
             }
             var showPageDialog by remember { mutableStateOf(false) }
-            Text(
-                text = "${state.currentPage + 1} / ${state.numPages}",
-                color = AppColors.Label.Primary,
+            Box(
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
-                    .clickable { showPageDialog = true }
-            )
+                    .clickable { showPageDialog = true },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "${state.currentPage + 1} / ${state.numPages}",
+                    color = AppColors.Label.Primary
+                )
+                // The page being drawn: the previous one stays on screen meanwhile
+                if (state.isRenderingPage) {
+                    androidx.compose.material3.LinearProgressIndicator(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .offset(y = 10.dp)
+                            .width(40.dp)
+                            .height(2.dp),
+                        color = AppColors.Accent,
+                        trackColor = Color.Transparent
+                    )
+                }
+            }
             if (showPageDialog) {
                 var pageInput by remember { mutableStateOf("") }
                 androidx.compose.material3.AlertDialog(
