@@ -109,6 +109,8 @@ fun PdfPageView(
                 displaySize = coordinates.size
             }
             .pointerInput(structuredText, pdfNativeWidth, pdfNativeHeight, pdfNativeBoundsLeft, pdfNativeBoundsTop, currentPage, penHighlightOnly, fingerSelectionOnly, snapToWord) {
+                // Computed once per page, on first use while selecting
+                val lineBands by lazy { structuredText?.highlightBands() }
                 // Hit test in content coordinates (before pan/zoom transform)
                 fun findAnnotationAt(localOffset: Offset): String? {
                     if (pdfNativeWidth <= 0f || displaySize.width <= 0) return null
@@ -353,9 +355,11 @@ fun PdfPageView(
                                             }
                                             sb.append("\n")
                                             
-                                            val lineBbox = line.bbox
-                                            val nTop = lineBbox.y0
-                                            val nBottom = lineBbox.y1
+                                            // Font-sized band instead of the line box, which
+                                            // overlaps the lines above and below
+                                            val band = lineBands?.get(line)
+                                            val nTop = band?.top ?: line.bbox.y0
+                                            val nBottom = band?.bottom ?: line.bbox.y1
                                             
                                             nativeSnapRects.add(Rect(nLeft, pdfNativeHeight - nBottom, nRight, pdfNativeHeight - nTop))
                                             
@@ -612,7 +616,8 @@ fun PdfPageView(
                         } else {
                             val annPath = Path()
                             for (rect in mergedRects) {
-                                val paddedRect = rect.inflate(2f)
+                                // Pad sideways only: vertical padding made lines bleed into each other
+                                val paddedRect = Rect(rect.left - 2f, rect.top, rect.right + 2f, rect.bottom)
                                 val radius = minOf(paddedRect.height / 2f, 8f * renderScale)
                                 annPath.addRoundRect(androidx.compose.ui.geometry.RoundRect(
                                     rect = paddedRect,

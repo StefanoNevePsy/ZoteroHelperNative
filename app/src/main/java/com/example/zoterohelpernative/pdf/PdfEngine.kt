@@ -308,6 +308,7 @@ class PdfEngine {
             val bounds = page.bounds
             val pageHeight = bounds.y1 - bounds.y0
             val structuredText = page.toStructuredText("preserve-whitespace") ?: return@withContext null
+            val bands = structuredText.highlightBands()
 
             // Flatten chars; line breaks and wide gaps become whitespace separators
             val raw = StringBuilder()
@@ -361,8 +362,9 @@ class PdfEngine {
             val rects = byLine.map { (line, quads) ->
                 val left = quads.minOf { it.x0 }
                 val right = quads.maxOf { it.x1 }
-                val top = line.bbox.y0
-                val bottom = line.bbox.y1
+                val band = bands[line]
+                val top = band?.top ?: line.bbox.y0
+                val bottom = band?.bottom ?: line.bbox.y1
                 RectF(left, pageHeight - bottom, right, pageHeight - top)
             }
             if (rects.isEmpty()) return@withContext null
