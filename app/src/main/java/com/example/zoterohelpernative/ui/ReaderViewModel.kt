@@ -84,6 +84,10 @@ data class ReaderState(
     /** A page is being drawn (the previous one stays visible meanwhile). */
     val isRenderingPage: Boolean = false,
     val showRenderStats: Boolean = false,
+    /** Pages in a vertical scrolling column instead of one at a time. */
+    val continuousMode: Boolean = false,
+    /** Pending scroll target for the column. */
+    val columnJumpTo: Int? = null,
     val renderStats: String? = null,
     val pdfError: String? = null,
     val pdfTheme: String = "light",
@@ -150,6 +154,11 @@ class ReaderViewModel(
         viewModelScope.launch {
             settingsRepository.toolIcons.collect { icons ->
                 _state.update { it.copy(toolIcons = icons) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.continuousScroll.collect { on ->
+                _state.update { it.copy(continuousMode = on) }
             }
         }
         viewModelScope.launch {
@@ -405,7 +414,21 @@ class ReaderViewModel(
         _state.update { it.copy(radialMenuOpen = false) }
     }
 
+    /** In the scrolling column, navigation scrolls instead of redrawing. Returns true if handled. */
+    private fun jumpInColumn(target: Int): Boolean {
+        if (!_state.value.continuousMode) return false
+        val page = target.coerceIn(0, (_state.value.numPages - 1).coerceAtLeast(0))
+        _state.update { it.copy(currentPage = page, columnJumpTo = page) }
+        persistCurrentPage()
+        return true
+    }
+
+    fun onColumnJumpHandled() {
+        _state.update { it.copy(columnJumpTo = null) }
+    }
+
     fun previousPage() {
+        if (jumpInColumn(_state.value.currentPage - 1)) return
         if (_state.value.currentPage > 0) {
             _state.update { it.copy(currentPage = it.currentPage - 1) }
             renderCurrentPage()
@@ -414,6 +437,7 @@ class ReaderViewModel(
     }
 
     fun nextPage() {
+        if (jumpInColumn(_state.value.currentPage + 1)) return
         if (_state.value.currentPage < _state.value.numPages - 1) {
             _state.update { it.copy(currentPage = it.currentPage + 1) }
             renderCurrentPage()
@@ -422,6 +446,7 @@ class ReaderViewModel(
     }
 
     fun goToPage(pageIndex: Int) {
+        if (jumpInColumn(pageIndex)) return
         val target = pageIndex.coerceIn(0, (_state.value.numPages - 1).coerceAtLeast(0))
         if (target != _state.value.currentPage) {
             _state.update { it.copy(currentPage = target, zoomLevel = 1.0f, panOffset = Offset.Zero) }
@@ -815,7 +840,9 @@ class ReaderViewModel(
         var text: com.artifex.mupdf.fitz.StructuredText? = null
     )
 
-    private val pageCache = com.example.zoterohelpernative.pdf.PageCache<RenderedPage>(capacity = 3)
+    // 5 = current page and two either side: enough for the scrolling column
+    // (two pages visible at most, plus look-ahead) at ~17-23 MB each
+    private val pageCache = com.example.zoterohelpernative.pdf.PageCache<RenderedPage>(capacity = 5)
     private val pagesInFlight = mutableMapOf<Int, kotlinx.coroutines.Deferred<RenderedPage?>>()
     private val textInFlight = mutableMapOf<Int, kotlinx.coroutines.Deferred<Unit>>()
     /** Bumped when a document is (re)loaded: work started for the old one is discarded. */
@@ -847,9 +874,9 @@ class ReaderViewModel(
      * the same page share one render, so flipping into a page the prefetch is
      * already drawing doesn't draw it twice.
      */
-    private suspend fun ensureRendered(pageIndex: Int): RenderedPage? {
+    private suspend fun ensureRendered(pageIndex: Int, scale: Float? = null): RenderedPage? {
         val generation = renderGeneration
-        val wanted = targetScale(pageIndex)
+        val wanted = scale ?: targetScale(pageIndex)
         pageCache[pageIndex]?.let { cached ->
             if (com.example.zoterohelpernative.pdf.RenderBudget.isReusable(cached.result.scale, wanted)) return cached
         }
@@ -939,6 +966,44 @@ class ReaderViewModel(
         val source = if (fromCache) "dalla memoria" else "${r.renderMillis} ms"
         return "Pag. ${page + 1}: ${r.bitmap.width}×${r.bitmap.height} (%.1f MB, %.2fx) · %s · in memoria %s"
             .format(java.util.Locale.ROOT, mb, r.scale, source, pageCache.pages.sorted().joinToString(",") { "${it + 1}" })
+    }
+
+    // ---- Continuous scrolling ---------------------------------------------
+
+    fun setContinuousMode(on: Boolean) {
+        viewModelScope.launch { settingsRepository.saveContinuousScroll(on) }
+        if (!on) {
+            // Back to single page: show the page the user scrolled to
+            _state.update { it.copy(zoomLevel = 1f, panOffset = androidx.compose.ui.geometry.Offset.Zero) }
+            renderCurrentPage()
+        }
+    }
+
+    /** Page size in PDF points, for laying out placeholders before a page is drawn. */
+    suspend fun pageSizeOf(pageIndex: Int): Pair<Float, Float>? = pdfEngine.pageSize(pageIndex)
+
+    /**
+     * A page for the scrolling column. Pages there span the column width, so
+     * the resolution follows the width (capped by RenderBudget as usual); the
+     * column is as wide as the screen's shorter side.
+     */
+    suspend fun renderForColumn(pageIndex: Int, columnWidthPx: Int): com.example.zoterohelpernative.pdf.PageRenderResult? {
+        val (w, h) = pdfEngine.pageSize(pageIndex) ?: return null
+        val scale = com.example.zoterohelpernative.pdf.RenderBudget.scaleFor(w, h, columnWidthPx, Int.MAX_VALUE)
+        return ensureRendered(pageIndex, scale)?.result
+    }
+
+    /** The page mostly visible in the column: drives the counter and "resume reading". */
+    fun onColumnPageVisible(pageIndex: Int) {
+        if (pageIndex == _state.value.currentPage) return
+        _state.update { it.copy(currentPage = pageIndex) }
+        persistCurrentPage()
+    }
+
+    /** Leaves the column for the full single-page reader at [pageIndex] (zoom, annotating). */
+    fun openPageFromColumn(pageIndex: Int) {
+        _state.update { it.copy(currentPage = pageIndex) }
+        setContinuousMode(false)
     }
 
     private var viewportJob: kotlinx.coroutines.Job? = null

@@ -38,6 +38,7 @@ class SettingsRepository(private val context: Context) {
         val AUTO_CACHE_PDFS = androidx.datastore.preferences.core.booleanPreferencesKey("auto_cache_pdfs")
         val APP_THEME = stringPreferencesKey("app_theme")
         val RENDER_STATS = androidx.datastore.preferences.core.booleanPreferencesKey("render_stats")
+        val CONTINUOUS_SCROLL = androidx.datastore.preferences.core.booleanPreferencesKey("continuous_scroll")
     }
 
     private val gson = Gson()
@@ -71,6 +72,11 @@ class SettingsRepository(private val context: Context) {
     val autoCachePdfs: Flow<Boolean> = context.dataStore.data.map { it[AUTO_CACHE_PDFS] ?: true }
     val appTheme: Flow<String?> = context.dataStore.data.map { it[APP_THEME] }
     val renderStats: Flow<Boolean> = context.dataStore.data.map { it[RENDER_STATS] ?: false }
+    val continuousScroll: Flow<Boolean> = context.dataStore.data.map { it[CONTINUOUS_SCROLL] ?: false }
+
+    suspend fun saveContinuousScroll(value: Boolean) {
+        context.dataStore.edit { it[CONTINUOUS_SCROLL] = value }
+    }
     val fingerSelectionOnly: Flow<Boolean> = context.dataStore.data.map { it[FINGER_SELECTION_ONLY] ?: false }
     val pdfTheme: Flow<String?> = context.dataStore.data.map { it[PDF_THEME] }
 

@@ -300,6 +300,14 @@ object AnnotationOps {
 
     // ---- position JSON ---------------------------------------------------
 
+    /** Page index and rects ([x1, y1, x2, y2], Zotero coords) of a highlight/underline, or null. */
+    fun pageAndRects(ann: ItemData): Pair<Int, List<DoubleArray>>? {
+        if (ann.annotationType != "highlight" && ann.annotationType != "underline") return null
+        val pos = parsePosition(ann.annotationPosition) ?: return null
+        return pos.pageIndex to pos.rects
+    }
+
+
     private class Position(
         val json: JsonObject,
         val pageIndex: Int,

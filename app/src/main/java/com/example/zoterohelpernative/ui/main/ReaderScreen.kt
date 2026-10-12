@@ -134,6 +134,23 @@ fun ReaderScreen(
                 }
             }
         } else {
+            if (state.continuousMode) {
+                com.example.zoterohelpernative.pdf.ContinuousPdfView(
+                    pageCount = state.numPages,
+                    startPage = state.currentPage,
+                    annotations = state.annotations,
+                    pdfTheme = state.pdfTheme,
+                    appIsDark = com.example.zoterohelpernative.theme.LocalAppPalette.current.isDark,
+                    getUiColor = viewModel::getUiColor,
+                    pageSizeOf = { viewModel.pageSizeOf(it) },
+                    renderPage = { index, width -> viewModel.renderForColumn(index, width) },
+                    onVisiblePageChanged = { viewModel.onColumnPageVisible(it) },
+                    onOpenPage = { viewModel.openPageFromColumn(it) },
+                    jumpTo = state.columnJumpTo,
+                    onJumpHandled = { viewModel.onColumnJumpHandled() },
+                    modifier = Modifier.fillMaxSize().hazeSource(hazeState)
+                )
+            } else {
             PdfPageView(
             currentPage = state.displayedPage,
             pageBitmap = state.pageBitmap,
@@ -208,6 +225,7 @@ fun ReaderScreen(
                     }
                 }
             )
+            }
         
         val density = androidx.compose.ui.platform.LocalDensity.current
         val configuration = androidx.compose.ui.platform.LocalConfiguration.current
@@ -565,6 +583,21 @@ fun ReaderScreen(
                 selectedId = state.pdfTheme,
                 onSelect = { viewModel.setPdfTheme(it) }
             )
+            IconButton(
+                onClick = { viewModel.setContinuousMode(!state.continuousMode) },
+                modifier = Modifier
+                    .size(TouchTarget.min)
+                    .background(
+                        if (state.continuousMode) AppColors.Accent.copy(alpha = 0.35f) else AppColors.Glass.ChromeTint,
+                        CircleShape
+                    )
+            ) {
+                Icon(
+                    if (state.continuousMode) Icons.Outlined.ViewDay else Icons.Outlined.ViewAgenda,
+                    contentDescription = if (state.continuousMode) "Torna alla pagina singola" else "Scorrimento continuo",
+                    tint = AppColors.Label.Primary
+                )
+            }
             IconButton(
                 onClick = { viewModel.toggleSidebar() },
                 modifier = Modifier
