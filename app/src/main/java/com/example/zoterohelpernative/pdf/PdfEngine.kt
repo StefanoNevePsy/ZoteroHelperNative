@@ -91,13 +91,14 @@ class PdfEngine {
     } }
 
     /** Text with character boxes for [pageIndex], used for highlight snapping. */
-    suspend fun extractStructuredText(pageIndex: Int): StructuredText? = withContext(Dispatchers.IO) { docMutex.withLock {
+    suspend fun extractStructuredText(pageIndex: Int): PageText? = withContext(Dispatchers.IO) { docMutex.withLock {
         val doc = document ?: return@withContext null
         if (pageIndex < 0 || pageIndex >= pageCount) return@withContext null
         var page: Page? = null
         try {
             page = doc.loadPage(pageIndex)
-            page.toStructuredText("preserve-whitespace")
+            val text = page.toStructuredText("preserve-whitespace") ?: return@withContext null
+            PageText(text, zoteroBandsFor(page, text))
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -308,7 +309,7 @@ class PdfEngine {
             val bounds = page.bounds
             val pageHeight = bounds.y1 - bounds.y0
             val structuredText = page.toStructuredText("preserve-whitespace") ?: return@withContext null
-            val bands = structuredText.highlightBands()
+            val bands = zoteroBandsFor(page, structuredText)
 
             // Flatten chars; line breaks and wide gaps become whitespace separators
             val raw = StringBuilder()
@@ -429,6 +430,21 @@ data class TextRect(
     val text: String,
     val rect: android.graphics.RectF
 )
+
+/** A page's text plus Zotero-style highlight bands per line (see [HighlightBand]). */
+class PageText(
+    val text: StructuredText,
+    val bands: Map<LineKey, HighlightBand.Band>
+)
+
+/** Highlight bands with the fonts' cap heights; empty (line boxes are used) if anything fails. */
+private fun zoteroBandsFor(page: Page, text: StructuredText): Map<LineKey, HighlightBand.Band> = try {
+    val capHeights = (page as? com.artifex.mupdf.fitz.PDFPage)?.getObject()?.let { readCapHeights(it) } ?: emptyMap()
+    text.zoteroLineBands(capHeights)
+} catch (e: Exception) {
+    e.printStackTrace()
+    emptyMap()
+}
 
 data class TextSearchResult(
     val pageIndex: Int, // 0-based

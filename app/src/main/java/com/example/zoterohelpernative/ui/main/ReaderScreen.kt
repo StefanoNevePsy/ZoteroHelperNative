@@ -175,6 +175,7 @@ fun ReaderScreen(
             pdfNativeBoundsLeft = state.pdfNativeBoundsLeft,
             pdfNativeBoundsTop = state.pdfNativeBoundsTop,
             structuredText = state.structuredText,
+            lineBands = state.lineBands,
             annotations = state.annotations,
             getUiColor = viewModel::getUiColor,
             activeUiColor = viewModel.getUiColor(state.activeColorHex),

@@ -72,7 +72,7 @@ fun ContinuousPdfView(
     /** The pen asks for the radial menu (long press or side button), at this position. */
     onStylusMenu: (Offset) -> Unit = {},
     /** Text of a page, for snapping pen selections to words. */
-    pageText: suspend (pageIndex: Int, columnWidthPx: Int) -> com.artifex.mupdf.fitz.StructuredText? = { _, _ -> null },
+    pageText: suspend (pageIndex: Int, columnWidthPx: Int) -> PageText? = { _, _ -> null },
     activeUiColor: Color = Color.Yellow,
     snapToWord: Boolean = false,
     /** A pen stroke on a page: rects in Zotero coords, extracted text. */
@@ -164,7 +164,7 @@ fun ContinuousPdfView(
                 }
                 val aspect = pageSize?.let { (w, h) -> if (h > 0f) w / h else null } ?: (595f / 842f)
 
-                val text by produceState<com.artifex.mupdf.fitz.StructuredText?>(null, pageIndex, page) {
+                val text by produceState<PageText?>(null, pageIndex, page) {
                     if (page != null) value = pageText(pageIndex, columnWidthPx)
                 }
                 var pageOrigin by remember { mutableStateOf(Offset.Zero) }
@@ -190,7 +190,8 @@ fun ContinuousPdfView(
                             pdfNativeHeight = rendered.nativeHeight,
                             pdfNativeBoundsLeft = rendered.nativeBoundsLeft,
                             pdfNativeBoundsTop = rendered.nativeBoundsTop,
-                            structuredText = text,
+                            structuredText = text?.text,
+                            lineBands = text?.bands,
                             annotations = annotations,
                             getUiColor = getUiColor,
                             activeUiColor = activeUiColor,

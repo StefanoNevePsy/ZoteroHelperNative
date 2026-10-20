@@ -1,60 +1,70 @@
 package com.example.zoterohelpernative.pdf
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import org.junit.Test
 
+/** Expected values follow zotero/pdf.js evaluator.js char rect rules. */
 class HighlightBandTest {
 
+    private val eps = 1e-4f
+
     @Test
-    fun matchesZoteroOnTheReportedPage() {
-        // Screenshot measurements: line pitch 15.3 px; MuPDF glyph box as tall as
-        // the pitch (bands touched); Zotero's bands ~14 px with a gap between lines
-        val pitch = 15.3f
-        val center = 340f
-        val b = HighlightBand.compute(center - pitch / 2, center + pitch / 2, 0f, 1000f,
-            prevCenter = center - pitch, nextCenter = center + pitch)
-        assertEquals(14f, b.bottom - b.top, 0.2f)
-        assertEquals(center, (b.top + b.bottom) / 2f, 0.001f)
+    fun capHeightReplacesTheAscentWhenLower() {
+        // Times-like: ascent 0.891, descent -0.216, capHeight 0.662
+        val (a, d) = HighlightBand.zoteroAscentDescent(0.891f, -0.216f, 0.662f)
+        assertEquals(0.662f, a, eps)
+        assertEquals(-0.216f, d, eps)
     }
 
     @Test
-    fun consecutiveLinesKeepAGap() {
-        val pitch = 12f
-        val centers = (0 until 20).map { 100f + it * pitch }
-        val bands = centers.mapIndexed { i, c ->
-            // Glyph boxes taller than the pitch: they'd overlap uncapped
-            HighlightBand.compute(c - 7f, c + 7f, c - 7f, c + 7f, centers.getOrNull(i - 1), centers.getOrNull(i + 1))
-        }
-        bands.zipWithNext().forEach { (a, b) -> assertTrue("gap ${b.top - a.bottom}", b.top - a.bottom >= pitch * 0.07f) }
+    fun capHeightAboveTheAscentIsIgnored() {
+        val (a, _) = HighlightBand.zoteroAscentDescent(0.7f, -0.2f, 0.9f)
+        assertEquals(0.7f, a, eps)
     }
 
     @Test
-    fun looseLeadingKeepsTheGlyphBox() {
-        val b = HighlightBand.compute(100f, 111f, 98f, 113f, prevCenter = 85f, nextCenter = 126f)
-        assertEquals(HighlightBand.Band(100f, 111f), b)
+    fun absurdMetricsAreClampedLikePdfJs() {
+        val (a, d) = HighlightBand.zoteroAscentDescent(1.3f, -0.8f, null)
+        assertEquals(0.75f, a, eps)
+        assertEquals(-0.25f, d, eps)
     }
 
     @Test
-    fun aLoneLineUsesTheGlyphBox() {
-        assertEquals(HighlightBand.Band(100f, 112f), HighlightBand.compute(100f, 112f, 90f, 120f))
+    fun missingMetricsUseTheDefaults() {
+        assertEquals(0.75f to -0.25f, HighlightBand.zoteroAscentDescent(0f, -0.2f, null))
     }
 
     @Test
-    fun scalesWithTheFont() {
-        val small = HighlightBand.compute(100f, 109f, 0f, 999f, 88f, 116f)
-        val large = HighlightBand.compute(100f, 127f, 0f, 999f, 80f, 146f)
-        assertTrue((large.bottom - large.top) > 2.5f * (small.bottom - small.top))
+    fun positiveDescentIsFlipped() {
+        assertEquals(-0.2f, HighlightBand.zoteroAscentDescent(0.8f, 0.2f, null).second, eps)
     }
 
     @Test
-    fun unusableInputsFallBackToTheLineBox() {
-        assertEquals(HighlightBand.Band(90f, 102f), HighlightBand.compute(Float.NaN, 100f, 90f, 102f))
-        assertEquals(HighlightBand.Band(90f, 102f), HighlightBand.compute(100f, 100f, 90f, 102f))
+    fun charBoxFromAMuPdfQuad() {
+        // 10pt, baseline at y=100, MuPDF quad from ascent 0.891 / descent -0.216
+        val box = HighlightBand.zoteroCharBox(100f, 10f, quadTop = 91.09f, quadBottom = 102.16f, capHeight = 0.662f)!!
+        assertEquals(100f - 6.62f, box.top, 1e-3f)   // cap height, not ascender
+        assertEquals(102.16f, box.bottom, 1e-3f)     // descender unchanged
     }
 
     @Test
-    fun medianIgnoresOutliers() {
-        assertEquals(12f, HighlightBand.median(listOf(12f, 12f, 30f, 11f, 12f)), 0f)
+    fun lineIsTheUnionOfItsChars() {
+        val u = HighlightBand.union(listOf(HighlightBand.Band(93f, 102f), HighlightBand.Band(92f, 101f)))
+        assertEquals(HighlightBand.Band(92f, 102f), u)
+        assertNull(HighlightBand.union(emptyList()))
+    }
+
+    @Test
+    fun standardFontCapHeights() {
+        assertEquals(0.662f, HighlightBand.standardCapHeight("ABCDEF+Times-Roman")!!, eps)
+        assertEquals(0.676f, HighlightBand.standardCapHeight("Times-Bold")!!, eps)
+        assertEquals(0.718f, HighlightBand.standardCapHeight("ArialMT")!!, eps)
+        assertNull(HighlightBand.standardCapHeight("MinionPro-Regular"))
+    }
+
+    @Test
+    fun subsetTagIsIgnoredWhenMatchingFonts() {
+        assertEquals(HighlightBand.normalizeFontName("Times-Roman"), HighlightBand.normalizeFontName("QWERTY+Times-Roman"))
     }
 }

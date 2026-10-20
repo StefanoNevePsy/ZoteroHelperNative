@@ -77,6 +77,8 @@ data class ReaderState(
     val viewportBitmap: android.graphics.Bitmap? = null,
     val viewportRect: androidx.compose.ui.geometry.Rect? = null,
     val structuredText: com.artifex.mupdf.fitz.StructuredText? = null,
+    /** Zotero-style highlight band per text line of the displayed page. */
+    val lineBands: Map<com.example.zoterohelpernative.pdf.LineKey, com.example.zoterohelpernative.pdf.HighlightBand.Band>? = null,
     
     val isLoadingPdf: Boolean = false,
     /** Page whose bitmap is on screen; can briefly lag [currentPage] while the next one draws. */
@@ -644,6 +646,7 @@ class ReaderViewModel(
                     isLoadingPdf = true,
                     pageBitmap = null,
                     structuredText = null,
+                    lineBands = null,
                     viewportBitmap = null,
                     viewportRect = null,
                     isRenderingPage = false,
@@ -840,7 +843,8 @@ class ReaderViewModel(
 
     private class RenderedPage(
         val result: com.example.zoterohelpernative.pdf.PageRenderResult,
-        var text: com.artifex.mupdf.fitz.StructuredText? = null
+        var text: com.artifex.mupdf.fitz.StructuredText? = null,
+        var bands: Map<com.example.zoterohelpernative.pdf.LineKey, com.example.zoterohelpernative.pdf.HighlightBand.Band>? = null
     )
 
     // 5 = current page and two either side: enough for the scrolling column
@@ -903,15 +907,16 @@ class ReaderViewModel(
         if (page.text != null) return
         val generation = renderGeneration
         val deferred = textInFlight[pageIndex] ?: viewModelScope.async {
-            val text = pdfEngine.extractStructuredText(pageIndex)
+            val pageText = pdfEngine.extractStructuredText(pageIndex)
             if (generation == renderGeneration) {
-                page.text = text
+                page.bands = pageText?.bands
+                page.text = pageText?.text
                 textInFlight.remove(pageIndex)
             }
         }.also { textInFlight[pageIndex] = it }
         deferred.await()
         if (_state.value.displayedPage == pageIndex && page.text != null) {
-            _state.update { it.copy(structuredText = page.text) }
+            _state.update { it.copy(structuredText = page.text, lineBands = page.bands) }
         }
     }
 
@@ -943,6 +948,7 @@ class ReaderViewModel(
                     pdfNativeBoundsLeft = r.nativeBoundsLeft,
                     pdfNativeBoundsTop = r.nativeBoundsTop,
                     structuredText = page.text,
+                    lineBands = page.bands,
                     displayedPage = target,
                     viewportBitmap = null,
                     viewportRect = null,
@@ -997,13 +1003,14 @@ class ReaderViewModel(
     }
 
     /** Text of a page in the column, for pen highlighting (after the page is drawn). */
-    suspend fun columnText(pageIndex: Int, columnWidthPx: Int): com.artifex.mupdf.fitz.StructuredText? {
+    suspend fun columnText(pageIndex: Int, columnWidthPx: Int): com.example.zoterohelpernative.pdf.PageText? {
         // Same scale as renderForColumn, so this reuses the cached page instead of redrawing
         val (w, h) = pdfEngine.pageSize(pageIndex) ?: return null
         val scale = com.example.zoterohelpernative.pdf.RenderBudget.scaleFor(w, h, columnWidthPx, Int.MAX_VALUE)
         val page = ensureRendered(pageIndex, scale) ?: return null
         ensureText(pageIndex, page)
-        return page.text
+        val text = page.text ?: return null
+        return com.example.zoterohelpernative.pdf.PageText(text, page.bands.orEmpty())
     }
 
     /** The page mostly visible in the column: drives the counter and "resume reading". */

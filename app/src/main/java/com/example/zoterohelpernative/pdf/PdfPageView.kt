@@ -51,6 +51,8 @@ fun PdfPageView(
     pdfNativeBoundsLeft: Float,
     pdfNativeBoundsTop: Float,
     structuredText: StructuredText?,
+    /** Zotero-style band per text line (see HighlightBand); used for new and existing highlights. */
+    lineBands: Map<LineKey, HighlightBand.Band>? = null,
     annotations: List<ItemData>,
     getUiColor: (String) -> Color,
     activeUiColor: Color = Color.Yellow,
@@ -113,9 +115,8 @@ fun PdfPageView(
             .onGloballyPositioned { coordinates ->
                 displaySize = coordinates.size
             }
-            .pointerInput(structuredText, pdfNativeWidth, pdfNativeHeight, pdfNativeBoundsLeft, pdfNativeBoundsTop, currentPage, penHighlightOnly, fingerSelectionOnly, snapToWord, inScrollingColumn) {
+            .pointerInput(structuredText, lineBands, pdfNativeWidth, pdfNativeHeight, pdfNativeBoundsLeft, pdfNativeBoundsTop, currentPage, penHighlightOnly, fingerSelectionOnly, snapToWord, inScrollingColumn) {
                 // Computed once per page, on first use while selecting
-                val lineBands by lazy { structuredText?.highlightBands() }
                 // Hit test in content coordinates (before pan/zoom transform)
                 fun findAnnotationAt(localOffset: Offset): String? {
                     if (pdfNativeWidth <= 0f || displaySize.width <= 0) return null
@@ -554,9 +555,13 @@ fun PdfPageView(
                             
                             val yA = pdfNativeHeight - nativeTop
                             val yB = pdfNativeHeight - nativeBottom
-                            val nTop = minOf(yA, yB)
-                            val nBottom = maxOf(yA, yB)
-                            
+                            // Existing highlights (from Zotero desktop or older app versions)
+                            // are drawn on their text line's Zotero band, so all look alike;
+                            // the stored annotation itself is not modified
+                            val aligned = lineBands?.let { HighlightBand.alignToLine(nLeft, minOf(yA, yB), nRight, maxOf(yA, yB), it) }
+                            val nTop = aligned?.top ?: minOf(yA, yB)
+                            val nBottom = aligned?.bottom ?: maxOf(yA, yB)
+
                             val screenLeft = (nLeft - pdfNativeBoundsLeft) * renderScale + offsetX
                             val screenTop = (nTop - pdfNativeBoundsTop) * renderScale + offsetY
                             val screenRight = (nRight - pdfNativeBoundsLeft) * renderScale + offsetX
