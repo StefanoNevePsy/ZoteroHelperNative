@@ -7,32 +7,44 @@ import org.junit.Test
 class HighlightBandTest {
 
     @Test
-    fun usesTheGlyphBoxLikeZotero() {
-        // Normal leading: glyph boxes don't touch, band = glyph box exactly
-        val b = HighlightBand.compute(100f, 111f, 98f, 113f, prevBottom = 99f, nextTop = 112f)
+    fun matchesZoteroOnTheReportedPage() {
+        // Screenshot measurements: line pitch 15.3 px; MuPDF glyph box as tall as
+        // the pitch (bands touched); Zotero's bands ~14 px with a gap between lines
+        val pitch = 15.3f
+        val center = 340f
+        val b = HighlightBand.compute(center - pitch / 2, center + pitch / 2, 0f, 1000f,
+            prevCenter = center - pitch, nextCenter = center + pitch)
+        assertEquals(14f, b.bottom - b.top, 0.2f)
+        assertEquals(center, (b.top + b.bottom) / 2f, 0.001f)
+    }
+
+    @Test
+    fun consecutiveLinesKeepAGap() {
+        val pitch = 12f
+        val centers = (0 until 20).map { 100f + it * pitch }
+        val bands = centers.mapIndexed { i, c ->
+            // Glyph boxes taller than the pitch: they'd overlap uncapped
+            HighlightBand.compute(c - 7f, c + 7f, c - 7f, c + 7f, centers.getOrNull(i - 1), centers.getOrNull(i + 1))
+        }
+        bands.zipWithNext().forEach { (a, b) -> assertTrue("gap ${b.top - a.bottom}", b.top - a.bottom >= pitch * 0.07f) }
+    }
+
+    @Test
+    fun looseLeadingKeepsTheGlyphBox() {
+        val b = HighlightBand.compute(100f, 111f, 98f, 113f, prevCenter = 85f, nextCenter = 126f)
         assertEquals(HighlightBand.Band(100f, 111f), b)
     }
 
     @Test
-    fun overlappingGlyphBoxesMeetAtTheMidpoint() {
-        // Tight leading: line 1 glyphs 100..113, line 2 glyphs 111..124
-        val upper = HighlightBand.compute(100f, 113f, 100f, 113f, nextTop = 111f)
-        val lower = HighlightBand.compute(111f, 124f, 111f, 124f, prevBottom = 113f)
-        assertEquals(112f, upper.bottom, 0f)
-        assertEquals(112f, lower.top, 0f)
-        assertTrue(upper.bottom <= lower.top)
+    fun aLoneLineUsesTheGlyphBox() {
+        assertEquals(HighlightBand.Band(100f, 112f), HighlightBand.compute(100f, 112f, 90f, 120f))
     }
 
     @Test
-    fun manyConsecutiveLinesNeverOverlap() {
-        // 12pt glyph boxes on an 11pt pitch: every pair overlaps by 1pt
-        val tops = (0 until 20).map { 100f + it * 11f }
-        val bands = tops.mapIndexed { i, t ->
-            HighlightBand.compute(t, t + 12f, t, t + 12f,
-                prevBottom = if (i > 0) tops[i - 1] + 12f else null,
-                nextTop = tops.getOrNull(i + 1))
-        }
-        bands.zipWithNext().forEach { (a, b) -> assertTrue(a.bottom <= b.top) }
+    fun scalesWithTheFont() {
+        val small = HighlightBand.compute(100f, 109f, 0f, 999f, 88f, 116f)
+        val large = HighlightBand.compute(100f, 127f, 0f, 999f, 80f, 146f)
+        assertTrue((large.bottom - large.top) > 2.5f * (small.bottom - small.top))
     }
 
     @Test

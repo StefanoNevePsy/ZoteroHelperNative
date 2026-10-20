@@ -37,6 +37,9 @@ import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.example.zoterohelpernative.annotations.AnnotationOps
@@ -68,6 +71,14 @@ fun ContinuousPdfView(
     onJumpHandled: () -> Unit = {},
     /** The pen asks for the radial menu (long press or side button), at this position. */
     onStylusMenu: (Offset) -> Unit = {},
+    /** Text of a page, for snapping pen selections to words. */
+    pageText: suspend (pageIndex: Int, columnWidthPx: Int) -> com.artifex.mupdf.fitz.StructuredText? = { _, _ -> null },
+    activeUiColor: Color = Color.Yellow,
+    snapToWord: Boolean = false,
+    /** A pen stroke on a page: rects in Zotero coords, extracted text. */
+    onAnnotationCreated: (pageIndex: Int, pageHeight: Float, rects: List<androidx.compose.ui.geometry.Rect>, text: String) -> Unit = { _, _, _, _ -> },
+    /** Tap on a highlight (id or null), at a position in root coordinates. */
+    onAnnotationTapped: (String?, Offset) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = startPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0)))
@@ -90,31 +101,20 @@ fun ContinuousPdfView(
     }
 
     val theme = PdfThemes.resolve(pdfTheme, appIsDark)
-    val colorFilter = remember(theme) { PdfThemes.colorMatrix(theme)?.let { ColorFilter.colorMatrix(ColorMatrix(it)) } }
-    val highlightBlend = if (theme.isDark) BlendMode.SrcOver else BlendMode.Multiply
-    val highlightAlpha = if (theme.isDark) 0.38f else 1f
-
-    // Highlights grouped by page once per change, not per frame
-    val byPage = remember(annotations) {
-        annotations.mapNotNull { ann -> AnnotationOps.pageAndRects(ann)?.let { (page, rects) -> Triple(page, ann, rects) } }
-            .groupBy { it.first }
-    }
-
     val currentOnStylusMenu by rememberUpdatedState(onStylusMenu)
 
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
-            // Scrolling is the finger's job. The pen's events are consumed before
-            // the list sees them (Initial pass), so it never drags the column; a
-            // long press or the side button opens the radial menu instead.
+            // Scrolling is the finger's job: each page consumes the pen's strokes
+            // to highlight, so the list never sees them. This only watches the
+            // pen for a long press or the side button, to open the radial menu.
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                     val isPen = down.type == PointerType.Stylus || down.type == PointerType.Eraser
                     if (!isPen) return@awaitEachGesture
-                    down.consume()
                     var lastEventTime = down.uptimeMillis
                     var menuShown = false
                     var moved = false
@@ -131,7 +131,6 @@ fun ContinuousPdfView(
                             continue
                         }
                         val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        event.changes.forEach { it.consume() }
                         if (!change.pressed) break
                         lastEventTime = change.uptimeMillis
                         position = change.position
@@ -165,52 +164,49 @@ fun ContinuousPdfView(
                 }
                 val aspect = pageSize?.let { (w, h) -> if (h > 0f) w / h else null } ?: (595f / 842f)
 
+                val text by produceState<com.artifex.mupdf.fitz.StructuredText?>(null, pageIndex, page) {
+                    if (page != null) value = pageText(pageIndex, columnWidthPx)
+                }
+                var pageOrigin by remember { mutableStateOf(Offset.Zero) }
+
                 Box(
                     modifier = Modifier
                         .widthIn(max = columnWidth)
                         .fillMaxWidth()
                         .aspectRatio(aspect)
                         .background(Color(0xFFFFFFFF.toInt() or theme.background))
+                        .onGloballyPositioned { pageOrigin = it.positionInRoot() }
                         .pointerInput(pageIndex) {
                             detectTapGestures(onDoubleTap = { onOpenPage(pageIndex) })
                         }
                 ) {
                     val rendered = page
                     if (rendered != null) {
-                        Image(
-                            bitmap = rendered.bitmap.asImageBitmap(),
-                            contentDescription = "Pagina ${pageIndex + 1}",
-                            contentScale = ContentScale.FillBounds,
-                            colorFilter = colorFilter,
+                        // Same view, selection and drawing as the single-page reader
+                        PdfPageView(
+                            currentPage = pageIndex,
+                            pageBitmap = rendered.bitmap,
+                            pdfNativeWidth = rendered.nativeWidth,
+                            pdfNativeHeight = rendered.nativeHeight,
+                            pdfNativeBoundsLeft = rendered.nativeBoundsLeft,
+                            pdfNativeBoundsTop = rendered.nativeBoundsTop,
+                            structuredText = text,
+                            annotations = annotations,
+                            getUiColor = getUiColor,
+                            activeUiColor = activeUiColor,
+                            snapToWord = snapToWord,
+                            pdfTheme = pdfTheme,
+                            viewportBitmap = null,
+                            viewportRect = null,
+                            onViewportChanged = { _, _, _ -> },
+                            pan = Offset.Zero,
+                            zoom = 1f,
+                            onPanZoomUpdate = { _, _, _ -> },
+                            onAnnotationCreated = { rects, t -> onAnnotationCreated(pageIndex, rendered.nativeHeight, rects, t) },
+                            onAnnotationTapped = { id, offset -> onAnnotationTapped(id, offset + pageOrigin) },
+                            inScrollingColumn = true,
                             modifier = Modifier.fillMaxSize()
                         )
-                        val marks = byPage[pageIndex].orEmpty()
-                        if (marks.isNotEmpty()) {
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                val pxPerPt = size.width / rendered.nativeWidth
-                                for ((_, ann, rects) in marks) {
-                                    val color = getUiColor(ann.annotationColor ?: "#ffd400")
-                                    for (r in rects) {
-                                        // Zotero rects: y from the page bottom
-                                        val left = (minOf(r[0], r[2]).toFloat() - rendered.nativeBoundsLeft) * pxPerPt
-                                        val right = (maxOf(r[0], r[2]).toFloat() - rendered.nativeBoundsLeft) * pxPerPt
-                                        val top = (rendered.nativeHeight - maxOf(r[1], r[3]).toFloat() - rendered.nativeBoundsTop) * pxPerPt
-                                        val bottom = (rendered.nativeHeight - minOf(r[1], r[3]).toFloat() - rendered.nativeBoundsTop) * pxPerPt
-                                        if (ann.annotationType == "underline") {
-                                            val t = (2.5f * pxPerPt).coerceAtLeast(2f)
-                                            drawRect(color, Offset(left, bottom - t / 2f), Size(right - left, t))
-                                        } else {
-                                            drawRect(
-                                                color = color.copy(alpha = color.alpha * highlightAlpha),
-                                                topLeft = Offset(left, top),
-                                                size = Size(right - left, bottom - top),
-                                                blendMode = highlightBlend
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             }

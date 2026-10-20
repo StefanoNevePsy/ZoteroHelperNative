@@ -148,6 +148,18 @@ fun ReaderScreen(
                     onOpenPage = { viewModel.openPageFromColumn(it) },
                     jumpTo = state.columnJumpTo,
                     onJumpHandled = { viewModel.onColumnJumpHandled() },
+                    pageText = { index, width -> viewModel.columnText(index, width) },
+                    activeUiColor = viewModel.getUiColor(state.activeColorHex),
+                    snapToWord = state.snapToWord,
+                    onAnnotationCreated = { pageIndex, pageHeight, rects, text ->
+                        if (state.activeTool == ActiveTool.ERASER) {
+                            viewModel.eraseAnnotationsIntersecting(rects, pageIndex)
+                        } else {
+                            val type = if (state.activeTool == ActiveTool.UNDERLINE) "underline" else "highlight"
+                            viewModel.addHighlight(itemKey, rects, text, type, pageIndex = pageIndex, pageHeight = pageHeight)
+                        }
+                    },
+                    onAnnotationTapped = { id, offset -> viewModel.selectAnnotation(id, offset) },
                     onStylusMenu = { offset ->
                         radialMenuPosition = offset
                         if (!viewModel.state.value.radialMenuOpen) viewModel.toggleRadialMenu()

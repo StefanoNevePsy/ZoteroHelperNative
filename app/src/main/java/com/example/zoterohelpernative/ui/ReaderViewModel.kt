@@ -507,14 +507,17 @@ class ReaderViewModel(
         parentItemKey: String,
         nativeRects: List<androidx.compose.ui.geometry.Rect>,
         extractedText: String,
-        annotationType: String = "highlight"
+        annotationType: String = "highlight",
+        // The scrolling column annotates pages other than the displayed one
+        pageIndex: Int? = null,
+        pageHeight: Float? = null
     ) {
         if (nativeRects.isEmpty()) return
         val s = _state.value
         val newAnn = AnnotationOps.buildHighlight(
             parentItemKey = parentItemKey,
-            pageIndex = s.displayedPage,
-            pageHeight = s.pdfNativeHeight,
+            pageIndex = pageIndex ?: s.displayedPage,
+            pageHeight = pageHeight ?: s.pdfNativeHeight,
             rects = nativeRects.map { PdfRect(it.left, it.top, it.right, it.bottom) },
             text = extractedText,
             colorHex = s.activeColorHex,
@@ -991,6 +994,16 @@ class ReaderViewModel(
         val (w, h) = pdfEngine.pageSize(pageIndex) ?: return null
         val scale = com.example.zoterohelpernative.pdf.RenderBudget.scaleFor(w, h, columnWidthPx, Int.MAX_VALUE)
         return ensureRendered(pageIndex, scale)?.result
+    }
+
+    /** Text of a page in the column, for pen highlighting (after the page is drawn). */
+    suspend fun columnText(pageIndex: Int, columnWidthPx: Int): com.artifex.mupdf.fitz.StructuredText? {
+        // Same scale as renderForColumn, so this reuses the cached page instead of redrawing
+        val (w, h) = pdfEngine.pageSize(pageIndex) ?: return null
+        val scale = com.example.zoterohelpernative.pdf.RenderBudget.scaleFor(w, h, columnWidthPx, Int.MAX_VALUE)
+        val page = ensureRendered(pageIndex, scale) ?: return null
+        ensureText(pageIndex, page)
+        return page.text
     }
 
     /** The page mostly visible in the column: drives the counter and "resume reading". */

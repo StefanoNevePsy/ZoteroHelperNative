@@ -1,46 +1,52 @@
 package com.example.zoterohelpernative.pdf
 
 /**
- * Vertical extent of a highlight on one text line.
+ * Vertical extent of a highlight on one text line, matching Zotero desktop.
  *
- * Matches Zotero desktop: the band is the glyph box of the line's characters —
- * the font's ascender-to-descender range at that font size, which both
- * Zotero's reader and MuPDF compute per character. The median top/bottom of
- * the characters is used, so a superscript or a symbol from another font
- * doesn't stretch the whole line.
- *
- * The only adjustment: where the glyph boxes of two consecutive lines in the
- * same column overlap (tight leading), both bands stop at the midpoint of the
- * overlap so highlights never cover each other. Coordinates are page space,
- * y growing downward.
+ * Starts from the line's glyph box (median char box, so a superscript or a
+ * symbol from another font doesn't stretch the line), centered on the text,
+ * and caps its height at [MAX_PITCH_SHARE] of the distance to the nearest
+ * line in the same column, so consecutive highlights keep a thin gap of paper
+ * like Zotero's. Coordinates are page space, y growing downward.
  */
 object HighlightBand {
 
     data class Band(val top: Float, val bottom: Float)
 
     /**
+     * Share of the line pitch a band may take. Measured on Zotero desktop
+     * highlights: ~14 px bands on a 15.3 px line pitch (0.91), leaving a hairline
+     * of paper between lines. MuPDF's glyph box is a little taller than
+     * Zotero's, so without this cap consecutive bands touch and read as one blob.
+     */
+    const val MAX_PITCH_SHARE = 0.92f
+
+    /**
      * @param glyphTop/glyphBottom median char box top/bottom on the line
      * @param fallbackTop/fallbackBottom the line bbox, used if the inputs are unusable
-     * @param prevBottom glyph bottom of the nearest line above in the same column
-     * @param nextTop glyph top of the nearest line below in the same column
+     * @param prevCenter/nextCenter vertical centers of the nearest lines above/below
+     *        in the same column, if any
      */
     fun compute(
         glyphTop: Float,
         glyphBottom: Float,
         fallbackTop: Float,
         fallbackBottom: Float,
-        prevBottom: Float? = null,
-        nextTop: Float? = null
+        prevCenter: Float? = null,
+        nextCenter: Float? = null
     ): Band {
         if (!glyphTop.isFinite() || !glyphBottom.isFinite() || glyphBottom <= glyphTop) {
             return Band(fallbackTop, fallbackBottom)
         }
-        var top = glyphTop
-        var bottom = glyphBottom
-        if (prevBottom != null && prevBottom > top && prevBottom < bottom) top = (top + prevBottom) / 2f
-        if (nextTop != null && nextTop < bottom && nextTop > top) bottom = (bottom + nextTop) / 2f
-        if (bottom <= top) return Band(glyphTop, glyphBottom)
-        return Band(top, bottom)
+        val center = (glyphTop + glyphBottom) / 2f
+        val pitches = listOfNotNull(
+            prevCenter?.takeIf { it < center }?.let { center - it },
+            nextCenter?.takeIf { it > center }?.let { it - center }
+        )
+        val height = glyphBottom - glyphTop
+        val maxHeight = pitches.minOrNull()?.let { it * MAX_PITCH_SHARE } ?: height
+        val h = minOf(height, maxHeight)
+        return Band(center - h / 2f, center + h / 2f)
     }
 
     fun median(values: List<Float>): Float {

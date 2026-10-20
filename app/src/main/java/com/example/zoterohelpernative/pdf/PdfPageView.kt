@@ -67,6 +67,11 @@ fun PdfPageView(
     onAnnotationCreated: (List<androidx.compose.ui.geometry.Rect>, String) -> Unit,
     onAnnotationTapped: (String?, Offset) -> Unit,
     onDoubleTap: (Offset) -> Unit = {},
+    /**
+     * Page inside the scrolling column: only the pen annotates, and finger
+     * gestures are left unconsumed so the list scrolls.
+     */
+    inScrollingColumn: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     // Around the page: black on the original theme, a paper hollow on PsyDiary
@@ -108,7 +113,7 @@ fun PdfPageView(
             .onGloballyPositioned { coordinates ->
                 displaySize = coordinates.size
             }
-            .pointerInput(structuredText, pdfNativeWidth, pdfNativeHeight, pdfNativeBoundsLeft, pdfNativeBoundsTop, currentPage, penHighlightOnly, fingerSelectionOnly, snapToWord) {
+            .pointerInput(structuredText, pdfNativeWidth, pdfNativeHeight, pdfNativeBoundsLeft, pdfNativeBoundsTop, currentPage, penHighlightOnly, fingerSelectionOnly, snapToWord, inScrollingColumn) {
                 // Computed once per page, on first use while selecting
                 val lineBands by lazy { structuredText?.highlightBands() }
                 // Hit test in content coordinates (before pan/zoom transform)
@@ -165,9 +170,10 @@ fun PdfPageView(
 
                     // Exactly one pointer type highlights, the other pans/zooms.
                     // Tapping an annotation works with both pointer types in both modes.
-                    val stylusHighlights = penHighlightOnly || fingerSelectionOnly
+                    val stylusHighlights = penHighlightOnly || fingerSelectionOnly || inScrollingColumn
                     val pointerHighlights = if (stylusHighlights) isStylus else !isStylus
 
+                    if (!pointerHighlights && inScrollingColumn) return@awaitEachGesture
                     if (!pointerHighlights) {
                         var startCentroid = Offset.Zero
                         var isTap = true

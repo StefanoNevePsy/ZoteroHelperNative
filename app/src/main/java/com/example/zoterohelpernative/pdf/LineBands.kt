@@ -5,7 +5,7 @@ import com.artifex.mupdf.fitz.StructuredText
 /**
  * Highlight bands for every line of a page (see [HighlightBand]). Neighbours
  * are the closest lines above/below that overlap horizontally, so the
- * overlap clamp works per column in multi-column layouts.
+ * pitch cap works per column in multi-column layouts.
  */
 fun StructuredText.highlightBands(): Map<StructuredText.TextLine, HighlightBand.Band> {
     class L(val line: StructuredText.TextLine, val top: Float, val bottom: Float, val x0: Float, val x1: Float)
@@ -27,18 +27,18 @@ fun StructuredText.highlightBands(): Map<StructuredText.TextLine, HighlightBand.
     val result = HashMap<StructuredText.TextLine, HighlightBand.Band>(lines.size)
     for (l in lines) {
         val center = (l.top + l.bottom) / 2f
-        var prevBottom: Float? = null
-        var nextTop: Float? = null
+        var prevCenter: Float? = null
+        var nextCenter: Float? = null
         for (o in lines) {
             if (o === l) continue
             if (!(o.x0 < l.x1 && l.x0 < o.x1)) continue // other column
             val oCenter = (o.top + o.bottom) / 2f
             // Runs of the same visual line aren't neighbours
             if (kotlin.math.abs(oCenter - center) < (l.bottom - l.top) * 0.5f) continue
-            if (oCenter < center && (prevBottom == null || o.bottom > prevBottom)) prevBottom = o.bottom
-            if (oCenter > center && (nextTop == null || o.top < nextTop)) nextTop = o.top
+            if (oCenter < center && (prevCenter == null || oCenter > prevCenter)) prevCenter = oCenter
+            if (oCenter > center && (nextCenter == null || oCenter < nextCenter)) nextCenter = oCenter
         }
-        result[l.line] = HighlightBand.compute(l.top, l.bottom, l.line.bbox.y0, l.line.bbox.y1, prevBottom, nextTop)
+        result[l.line] = HighlightBand.compute(l.top, l.bottom, l.line.bbox.y0, l.line.bbox.y1, prevCenter, nextCenter)
     }
     return result
 }
