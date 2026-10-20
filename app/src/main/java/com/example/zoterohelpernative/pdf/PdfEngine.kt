@@ -362,7 +362,7 @@ class PdfEngine {
             val rects = byLine.map { (line, quads) ->
                 val left = quads.minOf { it.x0 }
                 val right = quads.maxOf { it.x1 }
-                val band = bands[line]
+                val band = bands[line.key]
                 val top = band?.top ?: line.bbox.y0
                 val bottom = band?.bottom ?: line.bbox.y1
                 RectF(left, pageHeight - bottom, right, pageHeight - top)

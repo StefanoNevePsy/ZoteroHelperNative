@@ -7,7 +7,16 @@ import com.artifex.mupdf.fitz.StructuredText
  * are the closest lines above/below that overlap horizontally, so the
  * pitch cap works per column in multi-column layouts.
  */
-fun StructuredText.highlightBands(): Map<StructuredText.TextLine, HighlightBand.Band> {
+/**
+ * Identifies a line by its position. StructuredText.getBlocks() builds new
+ * TextLine objects on every call and they don't implement equals, so lines
+ * from two calls never match as map keys: the bbox is the stable identity.
+ */
+data class LineKey(val x0: Float, val y0: Float, val x1: Float, val y1: Float)
+
+val StructuredText.TextLine.key: LineKey get() = LineKey(bbox.x0, bbox.y0, bbox.x1, bbox.y1)
+
+fun StructuredText.highlightBands(): Map<LineKey, HighlightBand.Band> {
     class L(val line: StructuredText.TextLine, val top: Float, val bottom: Float, val x0: Float, val x1: Float)
 
     val lines = blocks.orEmpty().flatMap { it.lines.orEmpty().asList() }.mapNotNull { line ->
@@ -24,7 +33,7 @@ fun StructuredText.highlightBands(): Map<StructuredText.TextLine, HighlightBand.
         )
     }
 
-    val result = HashMap<StructuredText.TextLine, HighlightBand.Band>(lines.size)
+    val result = HashMap<LineKey, HighlightBand.Band>(lines.size)
     for (l in lines) {
         val center = (l.top + l.bottom) / 2f
         var prevCenter: Float? = null
@@ -38,7 +47,7 @@ fun StructuredText.highlightBands(): Map<StructuredText.TextLine, HighlightBand.
             if (oCenter < center && (prevCenter == null || oCenter > prevCenter)) prevCenter = oCenter
             if (oCenter > center && (nextCenter == null || oCenter < nextCenter)) nextCenter = oCenter
         }
-        result[l.line] = HighlightBand.compute(l.top, l.bottom, l.line.bbox.y0, l.line.bbox.y1, prevCenter, nextCenter)
+        result[l.line.key] = HighlightBand.compute(l.top, l.bottom, l.line.bbox.y0, l.line.bbox.y1, prevCenter, nextCenter)
     }
     return result
 }

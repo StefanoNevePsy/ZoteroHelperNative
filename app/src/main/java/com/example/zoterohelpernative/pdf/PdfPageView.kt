@@ -363,7 +363,7 @@ fun PdfPageView(
                                             
                                             // Font-sized band instead of the line box, which
                                             // overlaps the lines above and below
-                                            val band = lineBands?.get(line)
+                                            val band = lineBands?.get(line.key)
                                             val nTop = band?.top ?: line.bbox.y0
                                             val nBottom = band?.bottom ?: line.bbox.y1
                                             
