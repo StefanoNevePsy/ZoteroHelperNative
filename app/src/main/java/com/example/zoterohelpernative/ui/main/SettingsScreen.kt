@@ -220,6 +220,47 @@ fun SettingsScreen(
                         }
                     }
 
+                    // Settings backup
+                    ContentSurface(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("Backup impostazioni", style = MaterialTheme.typography.titleSmall, color = AppColors.Label.Primary)
+                            Text(
+                                "Salva tutte le impostazioni in un file per ripristinarle su un altro dispositivo o dopo una reinstallazione. Il file contiene credenziali e API key: conservalo in un posto sicuro.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AppColors.Label.Secondary
+                            )
+                            val backupContext = androidx.compose.ui.platform.LocalContext.current
+                            var backupMessage by remember { mutableStateOf<String?>(null) }
+                            val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                                androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
+                            ) { uri -> if (uri != null) viewModel.exportSettings(backupContext, uri) { backupMessage = it } }
+                            val importLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                                androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+                            ) { uri -> if (uri != null) viewModel.importSettings(backupContext, uri) { backupMessage = it } }
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                OutlinedButton(
+                                    onClick = { exportLauncher.launch("zoterohelper-impostazioni.json") },
+                                    modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                                ) {
+                                    Icon(Icons.Outlined.FileUpload, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Esporta")
+                                }
+                                OutlinedButton(
+                                    onClick = { importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
+                                    modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                                ) {
+                                    Icon(Icons.Outlined.FileDownload, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Importa")
+                                }
+                            }
+                            backupMessage?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall, color = AppColors.Label.Secondary)
+                            }
+                        }
+                    }
+
                     // Cache Section
                     ContentSurface(
                         modifier = Modifier.fillMaxWidth()

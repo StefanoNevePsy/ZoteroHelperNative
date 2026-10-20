@@ -44,6 +44,39 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
         loadSettings()
     }
 
+    /** Writes all settings to [uri] (a file the user picked). */
+    fun exportSettings(context: android.content.Context, uri: android.net.Uri, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(try {
+                val json = repository.exportSettings()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri, "wt")!!.use { it.write(json.toByteArray()) }
+                }
+                "Impostazioni esportate."
+            } catch (e: Exception) {
+                "Esportazione fallita: ${e.localizedMessage ?: "errore"}"
+            })
+        }
+    }
+
+    /** Restores settings from [uri], then reloads the screen with the imported values. */
+    fun importSettings(context: android.content.Context, uri: android.net.Uri, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(try {
+                val json = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)!!.use { it.readBytes().toString(Charsets.UTF_8) }
+                }
+                val count = repository.importSettings(json)
+                loadSettings()
+                "Importate $count impostazioni."
+            } catch (e: com.example.zoterohelpernative.data.SettingsBackup.InvalidBackup) {
+                "Importazione fallita: ${e.message}"
+            } catch (e: Exception) {
+                "Importazione fallita: ${e.localizedMessage ?: "errore"}"
+            })
+        }
+    }
+
     private fun loadSettings() {
         viewModelScope.launch {
             _state.update {

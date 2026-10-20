@@ -3,7 +3,11 @@ package com.example.zoterohelpernative.pdf
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -62,6 +66,8 @@ fun ContinuousPdfView(
     /** A page to scroll to (from the index, search, arrows or "go to page"). */
     jumpTo: Int? = null,
     onJumpHandled: () -> Unit = {},
+    /** The pen asks for the radial menu (long press or side button), at this position. */
+    onStylusMenu: (Offset) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = startPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0)))
@@ -94,7 +100,51 @@ fun ContinuousPdfView(
             .groupBy { it.first }
     }
 
-    BoxWithConstraints(modifier = modifier.fillMaxSize().background(Color.Black)) {
+    val currentOnStylusMenu by rememberUpdatedState(onStylusMenu)
+
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            // Scrolling is the finger's job. The pen's events are consumed before
+            // the list sees them (Initial pass), so it never drags the column; a
+            // long press or the side button opens the radial menu instead.
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    val isPen = down.type == PointerType.Stylus || down.type == PointerType.Eraser
+                    if (!isPen) return@awaitEachGesture
+                    down.consume()
+                    var lastEventTime = down.uptimeMillis
+                    var menuShown = false
+                    var moved = false
+                    var position = down.position
+                    val deadline = down.uptimeMillis + viewConfiguration.longPressTimeoutMillis
+                    while (true) {
+                        // A pen held still sends no events: wake up at the long-press deadline
+                        val waitMs = if (menuShown || moved) Long.MAX_VALUE else (deadline - lastEventTime).coerceAtLeast(1)
+                        val event = if (waitMs == Long.MAX_VALUE) awaitPointerEvent(PointerEventPass.Initial)
+                            else withTimeoutOrNull(waitMs) { awaitPointerEvent(PointerEventPass.Initial) }
+                        if (event == null) {
+                            menuShown = true
+                            currentOnStylusMenu(position)
+                            continue
+                        }
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        event.changes.forEach { it.consume() }
+                        if (!change.pressed) break
+                        lastEventTime = change.uptimeMillis
+                        position = change.position
+                        if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop) moved = true
+                        val sideButton = (event.buttons.hashCode() and 34) != 0
+                        if (!menuShown && sideButton) {
+                            menuShown = true
+                            currentOnStylusMenu(position)
+                        }
+                    }
+                }
+            }
+    ) {
         val density = LocalDensity.current
         // As wide as the screen's shorter side, centered: on a landscape tablet a
         // full-width page would be enormous and cost memory for nothing

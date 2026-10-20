@@ -148,6 +148,10 @@ fun ReaderScreen(
                     onOpenPage = { viewModel.openPageFromColumn(it) },
                     jumpTo = state.columnJumpTo,
                     onJumpHandled = { viewModel.onColumnJumpHandled() },
+                    onStylusMenu = { offset ->
+                        radialMenuPosition = offset
+                        if (!viewModel.state.value.radialMenuOpen) viewModel.toggleRadialMenu()
+                    },
                     modifier = Modifier.fillMaxSize().hazeSource(hazeState)
                 )
             } else {

@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.example.zoterohelpernative.data.Palette
@@ -15,6 +16,31 @@ import com.example.zoterohelpernative.data.Palette
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 class SettingsRepository(private val context: Context) {
+
+    /** All settings as a backup file (see [SettingsBackup]). Includes credentials and API keys. */
+    suspend fun exportSettings(): String {
+        val prefs = context.dataStore.data.first()
+        return SettingsBackup.encode(prefs.asMap().mapKeys { it.key.name })
+    }
+
+    /** Restores a backup over the current settings; returns how many were restored. */
+    suspend fun importSettings(json: String): Int {
+        val values = SettingsBackup.decode(json)
+        context.dataStore.edit { prefs ->
+            for ((name, value) in values) {
+                @Suppress("UNCHECKED_CAST")
+                when (value) {
+                    is String -> prefs[stringPreferencesKey(name)] = value
+                    is Boolean -> prefs[androidx.datastore.preferences.core.booleanPreferencesKey(name)] = value
+                    is Int -> prefs[androidx.datastore.preferences.core.intPreferencesKey(name)] = value
+                    is Long -> prefs[androidx.datastore.preferences.core.longPreferencesKey(name)] = value
+                    is Float -> prefs[androidx.datastore.preferences.core.floatPreferencesKey(name)] = value
+                    is Set<*> -> prefs[androidx.datastore.preferences.core.stringSetPreferencesKey(name)] = value as Set<String>
+                }
+            }
+        }
+        return values.size
+    }
     
     companion object {
         val ZOTERO_API_KEY = stringPreferencesKey("zotero_api_key")
